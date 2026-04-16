@@ -1,12 +1,19 @@
 export default async function handler(req, res) {
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      ok: true,
+      message: 'API Rodonaves da EscaSeven no ar'
+    });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const body = req.body;
-
-    console.log('Payload recebido da Yampi:', body);
+    console.log('METHOD:', req.method);
+    console.log('HEADERS:', JSON.stringify(req.headers, null, 2));
+    console.log('BODY:', JSON.stringify(req.body, null, 2));
 
     return res.status(200).json({
       quotes: [
@@ -21,7 +28,7 @@ export default async function handler(req, res) {
       ]
     });
   } catch (error) {
-    console.error(error);
+    console.error('ERRO:', error);
     return res.status(500).json({ error: 'Internal error' });
   }
 }
