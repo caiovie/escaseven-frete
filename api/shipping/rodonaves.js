@@ -72,7 +72,7 @@ export default async function handler(req, res) {
     // =========================
     const destinationZipCode = req.body?.zipcode || '';
     const eletronicInvoiceValue = Number(req.body?.amount || 0);
-    const receiverCpfcnp = '48878303860';
+    const receiverCpfcnp = req.body?.cart?.customer?.document || '00000000000';
 
     const totalWeight = (req.body?.skus || []).reduce((sum, sku) => {
       const weight = Number(sku?.weight || 0);
