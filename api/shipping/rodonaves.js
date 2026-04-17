@@ -30,8 +30,8 @@ async function getRodonavesToken() {
   return data.access_token;
 }
 
-async function getRodonavesQuote(token, payload) {
-  const response = await fetch('https://quotation-apigateway.rte.com.br/api/v1/gera-cotacao', {
+async function getRodonavesSimulation(token, payload) {
+  const response = await fetch('https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -44,7 +44,7 @@ async function getRodonavesQuote(token, payload) {
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Erro cotação Rodonaves: ${text}`);
+    throw new Error(`Erro simulação Rodonaves: ${text}`);
   }
 
   return JSON.parse(text);
@@ -72,7 +72,6 @@ export default async function handler(req, res) {
     // =========================
     const destinationZipCode = req.body?.zipcode || '';
     const eletronicInvoiceValue = Number(req.body?.amount || 0);
-    const receiverCpfcnp = req.body?.cart?.customer?.document || '00000000000';
 
     const totalWeight = (req.body?.skus || []).reduce((sum, sku) => {
       const weight = Number(sku?.weight || 0);
@@ -80,27 +79,22 @@ export default async function handler(req, res) {
       return sum + weight * quantity;
     }, 0);
 
+    // quantidade total de volumes
+    const totalPackages = (req.body?.skus || []).reduce((sum, sku) => {
+      return sum + Number(sku?.quantity || 0);
+    }, 0);
+
     console.log('destinationZipCode:', destinationZipCode);
     console.log('eletronicInvoiceValue:', eletronicInvoiceValue);
-    console.log('receiverCpfcnp:', receiverCpfcnp);
     console.log('totalWeight:', totalWeight);
+    console.log('totalPackages:', totalPackages);
 
     // =======================================
     // 2) Dados fixos/configurados na Vercel
     // =======================================
     const originZipCode = process.env.ESCASEVEN_ORIGIN_ZIP;
     const originCityId = Number(process.env.ESCASEVEN_ORIGIN_CITY_ID);
-
-    // TEMPORÁRIO:
-    // enquanto você ainda não automatizou a busca do city id por CEP,
-    // use um city id fixo de teste para o destino.
-    // depois vamos trocar por busca dinâmica.
     const destinationCityId = Number(process.env.DESTINATION_CITY_ID_TEST || 0);
-
-    const contactName =
-      process.env.ESCASEVEN_CONTACT_NAME || 'Cliente EscaSeven';
-    const contactPhoneNumber =
-      process.env.ESCASEVEN_CONTACT_PHONE || '11999999999';
 
     const customerTaxIdRegistration =
       process.env.RODONAVES_CUSTOMER_TAX_ID || '51835028000180';
@@ -121,6 +115,10 @@ export default async function handler(req, res) {
       throw new Error('Variável DESTINATION_CITY_ID_TEST não configurada corretamente');
     }
 
+    if (!totalPackages || totalPackages < 1) {
+      throw new Error('TotalPackages inválido');
+    }
+
     // =========================
     // 3) Token da Rodonaves
     // =========================
@@ -128,9 +126,9 @@ export default async function handler(req, res) {
     console.log('TOKEN OK?', !!token);
 
     // =========================
-    // 4) Payload da Rodonaves
+    // 4) Payload da simulação
     // =========================
-    const rodonavesPayload = {
+    const rodonavesSimulationPayload = {
       OriginZipCode: originZipCode,
       OriginCityId: originCityId,
       DestinationZipCode: destinationZipCode,
@@ -138,32 +136,31 @@ export default async function handler(req, res) {
       TotalWeight: totalWeight,
       EletronicInvoiceValue: eletronicInvoiceValue,
       CustomerTaxIdRegistration: customerTaxIdRegistration,
-      ReceiverCpfcnp: receiverCpfcnp,
-      ContactName: contactName,
-      ContactPhoneNumber: contactPhoneNumber,
+      TotalPackages: totalPackages,
+      Packs: [],
     };
 
     console.log(
-      'RODONAVES PAYLOAD:',
-      JSON.stringify(rodonavesPayload, null, 2)
+      'RODONAVES SIMULATION PAYLOAD:',
+      JSON.stringify(rodonavesSimulationPayload, null, 2)
     );
 
     // =========================
-    // 5) Cotação Rodonaves
+    // 5) Simulação Rodonaves
     // =========================
-    const rodonavesQuote = await getRodonavesQuote(token, rodonavesPayload);
+    const rodonavesSimulation = await getRodonavesSimulation(
+      token,
+      rodonavesSimulationPayload
+    );
 
     console.log(
-      'RODONAVES RESPONSE:',
-      JSON.stringify(rodonavesQuote, null, 2)
+      'RODONAVES SIMULATION RESPONSE:',
+      JSON.stringify(rodonavesSimulation, null, 2)
     );
 
     // ==========================================
     // 6) RETORNO MOCKADO PARA NÃO QUEBRAR A YAMPI
     // ==========================================
-    // Por enquanto, mantenha isso fixo.
-    // Quando você validar o formato da resposta da Rodonaves,
-    // a gente troca pelo valor real.
     return res.status(200).json({
       quotes: [
         {
