@@ -166,9 +166,9 @@ export default async function handler(req, res) {
         {
           name: 'Rodonaves',
           service: 'Normal',
-          price: 99.9,
-          days: 3,
-          quote_id: 'rodonaves-teste-1',
+          price: Number(rodonavesSimulation.Value),
+          days: Number(rodonavesSimulation.DeliveryTime),
+          quote_id: String(rodonavesSimulation.ProtocolNumber || 'rodonaves-simulado'),
           free_shipment: false,
         },
       ],
