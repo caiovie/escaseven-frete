@@ -30,6 +30,53 @@ async function getRodonavesToken() {
   return data.access_token;
 }
 
+async function getCityByZipcode(token, zipCode) {
+  const url = `https://dne-api.rte.com.br/api/cities/byzipcode?zipCode=${encodeURIComponent(
+    zipCode
+  )}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Erro busca-cidade Rodonaves: ${text}`);
+  }
+
+  const data = JSON.parse(text);
+  return data;
+}
+
+function extractCityId(cityResponse) {
+  if (!cityResponse) {
+    throw new Error('Resposta de cidade vazia');
+  }
+
+  // cobre formatos comuns possíveis
+  if (typeof cityResponse.Id !== 'undefined') return Number(cityResponse.Id);
+  if (typeof cityResponse.id !== 'undefined') return Number(cityResponse.id);
+  if (typeof cityResponse.CityId !== 'undefined') return Number(cityResponse.CityId);
+  if (typeof cityResponse.cityId !== 'undefined') return Number(cityResponse.cityId);
+
+  if (Array.isArray(cityResponse) && cityResponse.length > 0) {
+    const item = cityResponse[0];
+    if (typeof item.Id !== 'undefined') return Number(item.Id);
+    if (typeof item.id !== 'undefined') return Number(item.id);
+    if (typeof item.CityId !== 'undefined') return Number(item.CityId);
+    if (typeof item.cityId !== 'undefined') return Number(item.cityId);
+  }
+
+  throw new Error(
+    `Não foi possível identificar o city id na resposta: ${JSON.stringify(cityResponse)}`
+  );
+}
+
 async function getRodonavesSimulation(token, payload) {
   const response = await fetch('https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao', {
     method: 'POST',
@@ -79,7 +126,6 @@ export default async function handler(req, res) {
       return sum + weight * quantity;
     }, 0);
 
-    // quantidade total de volumes
     const totalPackages = (req.body?.skus || []).reduce((sum, sku) => {
       return sum + Number(sku?.quantity || 0);
     }, 0);
@@ -94,8 +140,6 @@ export default async function handler(req, res) {
     // =======================================
     const originZipCode = process.env.ESCASEVEN_ORIGIN_ZIP;
     const originCityId = Number(process.env.ESCASEVEN_ORIGIN_CITY_ID);
-    const destinationCityId = Number(process.env.DESTINATION_CITY_ID_TEST || 0);
-
     const customerTaxIdRegistration =
       process.env.RODONAVES_CUSTOMER_TAX_ID || '51835028000180';
 
@@ -111,10 +155,6 @@ export default async function handler(req, res) {
       throw new Error('CEP de destino não recebido da Yampi');
     }
 
-    if (!destinationCityId || Number.isNaN(destinationCityId)) {
-      throw new Error('Variável DESTINATION_CITY_ID_TEST não configurada corretamente');
-    }
-
     if (!totalPackages || totalPackages < 1) {
       throw new Error('TotalPackages inválido');
     }
@@ -126,7 +166,21 @@ export default async function handler(req, res) {
     console.log('TOKEN OK?', !!token);
 
     // =========================
-    // 4) Payload da simulação
+    // 4) Buscar city id do destino por CEP
+    // =========================
+    const destinationCityResponse = await getCityByZipcode(token, destinationZipCode);
+
+    console.log(
+      'RODONAVES DESTINATION CITY RESPONSE:',
+      JSON.stringify(destinationCityResponse, null, 2)
+    );
+
+    const destinationCityId = extractCityId(destinationCityResponse);
+
+    console.log('destinationCityId:', destinationCityId);
+
+    // =========================
+    // 5) Payload da simulação
     // =========================
     const rodonavesSimulationPayload = {
       OriginZipCode: originZipCode,
@@ -146,7 +200,7 @@ export default async function handler(req, res) {
     );
 
     // =========================
-    // 5) Simulação Rodonaves
+    // 6) Simulação Rodonaves
     // =========================
     const rodonavesSimulation = await getRodonavesSimulation(
       token,
@@ -158,24 +212,33 @@ export default async function handler(req, res) {
       JSON.stringify(rodonavesSimulation, null, 2)
     );
 
-    // ==========================================
-    // 6) RETORNO MOCKADO PARA NÃO QUEBRAR A YAMPI
-    // ==========================================
+    // =========================
+    // 7) Retorno real para Yampi
+    // =========================
+    const quoteId =
+      rodonavesSimulation.ProtocolNumber &&
+      rodonavesSimulation.ProtocolNumber !== '0'
+        ? String(rodonavesSimulation.ProtocolNumber)
+        : `rodonaves-${Date.now()}`;
+
     return res.status(200).json({
       quotes: [
         {
           name: 'Rodonaves',
           service: 'Normal',
-          price: Number(rodonavesSimulation.Value),
-          days: Number(rodonavesSimulation.DeliveryTime),
-          quote_id: String(rodonavesSimulation.ProtocolNumber || 'rodonaves-simulado'),
+          price: Number(rodonavesSimulation.Value || 0),
+          days: Number(rodonavesSimulation.DeliveryTime || 0),
+          quote_id: quoteId,
           free_shipment: false,
         },
       ],
     });
   } catch (error) {
     console.error('ERRO:', error);
-    return res.status(500).json({
+
+    // Evita quebrar completamente o checkout
+    return res.status(200).json({
+      quotes: [],
       error: 'Internal error',
       message: error.message,
     });
