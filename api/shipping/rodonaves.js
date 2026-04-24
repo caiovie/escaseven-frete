@@ -138,7 +138,7 @@ async function simulateRodonaves(token, payload) {
       },
       body: JSON.stringify(payload),
     },
-    5000
+    10000
   );
 
   const text = await response.text();
