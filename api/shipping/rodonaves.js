@@ -186,7 +186,7 @@ async function getRodonavesSimulation(token, payload) {
       },
       body: JSON.stringify(payload),
     },
-    2600
+    3500
   );
 
   const text = await response.text();
