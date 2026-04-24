@@ -2,7 +2,7 @@
 // Cache em memória
 // =========================
 // Em Vercel/serverless, esse cache funciona enquanto a instância estiver quente.
-// Não substitui banco de dados, mas reduz muito chamadas repetidas.
+// Ajuda bastante em chamadas repetidas do checkout.
 const CACHE = globalThis.__RODONAVES_CACHE__ || {
   token: null,
   tokenExpiresAt: 0,
@@ -17,19 +17,24 @@ globalThis.__RODONAVES_CACHE__ = CACHE;
 // Configurações
 // =========================
 const CONFIG = {
-  yampiBudgetMs: Number(process.env.YAMPI_TOTAL_BUDGET_MS || 3900),
+  // A Yampi precisa receber resposta rápida. Mantemos margem antes de 4s.
+  yampiBudgetMs: Number(process.env.YAMPI_TOTAL_BUDGET_MS || 3800),
+
   tokenTimeoutMs: Number(process.env.RODONAVES_TOKEN_TIMEOUT_MS || 2200),
   cityTimeoutMs: Number(process.env.RODONAVES_CITY_TIMEOUT_MS || 2200),
   simulationTimeoutMs: Number(process.env.RODONAVES_SIMULATION_TIMEOUT_MS || 3200),
+
   quoteCacheTtlMs: Number(process.env.RODONAVES_QUOTE_CACHE_TTL_MS || 10 * 60 * 1000),
   tokenCacheTtlMs: Number(process.env.RODONAVES_TOKEN_CACHE_TTL_MS || 7 * 60 * 60 * 1000),
+  noCoverageCacheTtlMs: Number(process.env.RODONAVES_NO_COVERAGE_CACHE_TTL_MS || 24 * 60 * 60 * 1000),
 };
 
 // =========================
-// Cidades conhecidas / fallback rápido
+// Faixas conhecidas de cidade
 // =========================
-// Isso evita chamar cities/byzipcode para faixas que você já validou.
-// Adicione novas cidades aqui conforme os testes forem confirmando.
+// Isso NÃO limita a Rodonaves a essas cidades.
+// Apenas evita chamar cities/byzipcode para faixas já validadas.
+// Para qualquer CEP fora dessas faixas, o código consulta a API da Rodonaves normalmente.
 const STATIC_CITY_RANGES = [
   {
     cityId: 9432,
@@ -90,10 +95,10 @@ function zipInRange(zipCode, startZip, endZip) {
 }
 
 function getStaticCityByZipcode(zipCode) {
-  const normalizedZip = onlyDigits(zipCode);
+  const normalizedZipCode = onlyDigits(zipCode);
 
   const found = STATIC_CITY_RANGES.find((range) =>
-    zipInRange(normalizedZip, range.startZip, range.endZip)
+    zipInRange(normalizedZipCode, range.startZip, range.endZip)
   );
 
   if (!found) return null;
@@ -331,12 +336,17 @@ function extractCityId(cityResponse) {
 async function getRodonavesSimulation(token, payload, startedAt) {
   const remaining = remainingBudgetMs(startedAt);
 
-  // Mantém uma margem para montar e devolver a resposta para a Yampi.
-  const safeTimeout = Math.min(CONFIG.simulationTimeoutMs, Math.max(800, remaining - 300));
+  // Reserva margem para montar e devolver o JSON para a Yampi.
+  const safeTimeout = Math.min(
+    CONFIG.simulationTimeoutMs,
+    Math.max(800, remaining - 250)
+  );
 
   if (safeTimeout < 1000) {
     throw new Error(`Sem tempo suficiente para simulação Rodonaves. Restante: ${remaining}ms`);
   }
+
+  console.log('SIMULATION TIMEOUT MS:', safeTimeout);
 
   const response = await fetchWithTimeout(
     'https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao',
@@ -454,7 +464,6 @@ export default async function handler(req, res) {
 
     console.log('destinationCityId:', destinationCityId);
 
-    // Se já sabemos que essa cidade não tem cobertura, retorna vazio rápido.
     const noCoverageKey = String(destinationCityId);
 
     if (CACHE.noCoverageByCityId.has(noCoverageKey)) {
@@ -509,7 +518,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Se já gastou tempo demais antes da simulação, não força timeout longo.
+    // Se já gastou tempo demais antes da simulação, retorna vazio rápido.
     if (remainingBudgetMs(startedAt) < 1200) {
       console.log('SEM TEMPO PARA SIMULAÇÃO. RESTANTE:', remainingBudgetMs(startedAt));
       return res.status(200).json({ quotes: [] });
@@ -532,7 +541,7 @@ export default async function handler(req, res) {
       console.log('RODONAVES SEM COTAÇÃO:', rodonavesSimulation?.Message);
 
       if (isNoCoverageError(rodonavesSimulation?.Message)) {
-        CACHE.noCoverageByCityId.set(noCoverageKey, nowMs() + 24 * 60 * 60 * 1000);
+        CACHE.noCoverageByCityId.set(noCoverageKey, nowMs() + CONFIG.noCoverageCacheTtlMs);
       }
 
       return res.status(200).json({ quotes: [] });
