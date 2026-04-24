@@ -129,7 +129,7 @@ async function getCityByZipcode(token, zipCode) {
         Accept: 'application/json',
       },
     },
-    1200
+    2000
   );
 
   const text = await response.text();
