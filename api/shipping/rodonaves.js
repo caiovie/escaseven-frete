@@ -1,15 +1,51 @@
 // =========================
 // Cache em memória
 // =========================
-// Observação: em Vercel/serverless, esse cache funciona enquanto a instância estiver "quente".
-// Não é um banco de dados, mas já reduz muito chamadas repetidas.
+// Em Vercel/serverless, esse cache funciona enquanto a instância estiver quente.
+// Não substitui banco de dados, mas reduz muito chamadas repetidas.
 const CACHE = globalThis.__RODONAVES_CACHE__ || {
   token: null,
   tokenExpiresAt: 0,
   cityByZipcode: new Map(),
+  quoteByKey: new Map(),
+  noCoverageByCityId: new Map(),
 };
 
 globalThis.__RODONAVES_CACHE__ = CACHE;
+
+// =========================
+// Configurações
+// =========================
+const CONFIG = {
+  yampiBudgetMs: Number(process.env.YAMPI_TOTAL_BUDGET_MS || 3900),
+  tokenTimeoutMs: Number(process.env.RODONAVES_TOKEN_TIMEOUT_MS || 2200),
+  cityTimeoutMs: Number(process.env.RODONAVES_CITY_TIMEOUT_MS || 2200),
+  simulationTimeoutMs: Number(process.env.RODONAVES_SIMULATION_TIMEOUT_MS || 3200),
+  quoteCacheTtlMs: Number(process.env.RODONAVES_QUOTE_CACHE_TTL_MS || 10 * 60 * 1000),
+  tokenCacheTtlMs: Number(process.env.RODONAVES_TOKEN_CACHE_TTL_MS || 7 * 60 * 60 * 1000),
+};
+
+// =========================
+// Cidades conhecidas / fallback rápido
+// =========================
+// Isso evita chamar cities/byzipcode para faixas que você já validou.
+// Adicione novas cidades aqui conforme os testes forem confirmando.
+const STATIC_CITY_RANGES = [
+  {
+    cityId: 9432,
+    description: 'Osasco',
+    uf: 'SP',
+    startZip: '06000001',
+    endZip: '06299999',
+  },
+  {
+    cityId: 7043,
+    description: 'Rio de Janeiro',
+    uf: 'RJ',
+    startZip: '20000001',
+    endZip: '23799999',
+  },
+];
 
 // =========================
 // Helpers
@@ -33,6 +69,43 @@ function logDebug(label, data) {
   console.log(label, JSON.stringify(data, null, 2));
 }
 
+function nowMs() {
+  return Date.now();
+}
+
+function elapsedMs(startedAt) {
+  return nowMs() - startedAt;
+}
+
+function remainingBudgetMs(startedAt) {
+  return CONFIG.yampiBudgetMs - elapsedMs(startedAt);
+}
+
+function zipInRange(zipCode, startZip, endZip) {
+  const zip = Number(onlyDigits(zipCode));
+  const start = Number(onlyDigits(startZip));
+  const end = Number(onlyDigits(endZip));
+
+  return zip >= start && zip <= end;
+}
+
+function getStaticCityByZipcode(zipCode) {
+  const normalizedZip = onlyDigits(zipCode);
+
+  const found = STATIC_CITY_RANGES.find((range) =>
+    zipInRange(normalizedZip, range.startZip, range.endZip)
+  );
+
+  if (!found) return null;
+
+  return {
+    Id: found.cityId,
+    Description: found.description,
+    UnitFederation: found.uf,
+    Source: 'static-range',
+  };
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -47,13 +120,88 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
   }
 }
 
+function buildQuoteKey({
+  originZipCode,
+  originCityId,
+  destinationZipCode,
+  destinationCityId,
+  totalWeight,
+  eletronicInvoiceValue,
+  totalPackages,
+}) {
+  return [
+    originZipCode,
+    originCityId,
+    destinationZipCode,
+    destinationCityId,
+    Number(totalWeight).toFixed(3),
+    Number(eletronicInvoiceValue).toFixed(2),
+    totalPackages,
+  ].join('|');
+}
+
+function getCachedQuote(key) {
+  const item = CACHE.quoteByKey.get(key);
+
+  if (!item) return null;
+
+  if (item.expiresAt <= nowMs()) {
+    CACHE.quoteByKey.delete(key);
+    return null;
+  }
+
+  return item.value;
+}
+
+function setCachedQuote(key, quote) {
+  CACHE.quoteByKey.set(key, {
+    value: quote,
+    expiresAt: nowMs() + CONFIG.quoteCacheTtlMs,
+  });
+}
+
+function buildYampiQuote(rodonavesSimulation) {
+  const price = Number(rodonavesSimulation?.Value || 0);
+  const days = Number(rodonavesSimulation?.DeliveryTime || 0);
+
+  if (!price || price <= 0 || !days || days <= 0) {
+    return null;
+  }
+
+  const quoteId =
+    rodonavesSimulation.ProtocolNumber &&
+    rodonavesSimulation.ProtocolNumber !== '0'
+      ? String(rodonavesSimulation.ProtocolNumber)
+      : `rodonaves-${Date.now()}`;
+
+  return {
+    name: 'Rodonaves',
+    service: 'Normal',
+    price,
+    days,
+    quote_id: quoteId,
+    free_shipment: false,
+  };
+}
+
+function isNoCoverageError(errorMessage) {
+  const msg = String(errorMessage || '').toLowerCase();
+
+  return (
+    msg.includes('não localizada uma unidade') ||
+    msg.includes('nao localizada uma unidade') ||
+    msg.includes('não atende') ||
+    msg.includes('nao atende')
+  );
+}
+
 // =========================
 // Token Rodonaves com cache
 // =========================
 async function getRodonavesToken() {
-  const now = Date.now();
+  const currentTime = nowMs();
 
-  if (CACHE.token && CACHE.tokenExpiresAt > now) {
+  if (CACHE.token && CACHE.tokenExpiresAt > currentTime) {
     console.log('TOKEN CACHE OK');
     return CACHE.token;
   }
@@ -75,7 +223,7 @@ async function getRodonavesToken() {
       },
       body,
     },
-    1500
+    CONFIG.tokenTimeoutMs
   );
 
   const text = await response.text();
@@ -90,10 +238,8 @@ async function getRodonavesToken() {
     throw new Error('Rodonaves não retornou access_token');
   }
 
-  // O token costuma ter expires_in de 28800 segundos.
-  // Aqui usamos 7 horas para renovar antes de expirar.
   CACHE.token = data.access_token;
-  CACHE.tokenExpiresAt = Date.now() + 7 * 60 * 60 * 1000;
+  CACHE.tokenExpiresAt = nowMs() + CONFIG.tokenCacheTtlMs;
 
   console.log('TOKEN NOVO OK');
 
@@ -101,7 +247,7 @@ async function getRodonavesToken() {
 }
 
 // =========================
-// Busca city id por CEP com cache
+// Busca city id por CEP com cache + fallback
 // =========================
 async function getCityByZipcode(token, zipCode) {
   const normalizedZipCode = onlyDigits(zipCode);
@@ -114,6 +260,14 @@ async function getCityByZipcode(token, zipCode) {
     const cachedCity = CACHE.cityByZipcode.get(normalizedZipCode);
     console.log('CITY CACHE OK:', normalizedZipCode, cachedCity?.Id || cachedCity?.id);
     return cachedCity;
+  }
+
+  const staticCity = getStaticCityByZipcode(normalizedZipCode);
+
+  if (staticCity) {
+    CACHE.cityByZipcode.set(normalizedZipCode, staticCity);
+    console.log('CITY STATIC OK:', normalizedZipCode, staticCity.Id);
+    return staticCity;
   }
 
   const url = `https://dne-api.rte.com.br/api/cities/byzipcode?zipCode=${encodeURIComponent(
@@ -129,7 +283,7 @@ async function getCityByZipcode(token, zipCode) {
         Accept: 'application/json',
       },
     },
-    2000
+    CONFIG.cityTimeoutMs
   );
 
   const text = await response.text();
@@ -174,7 +328,16 @@ function extractCityId(cityResponse) {
 // =========================
 // Simulação Rodonaves
 // =========================
-async function getRodonavesSimulation(token, payload) {
+async function getRodonavesSimulation(token, payload, startedAt) {
+  const remaining = remainingBudgetMs(startedAt);
+
+  // Mantém uma margem para montar e devolver a resposta para a Yampi.
+  const safeTimeout = Math.min(CONFIG.simulationTimeoutMs, Math.max(800, remaining - 300));
+
+  if (safeTimeout < 1000) {
+    throw new Error(`Sem tempo suficiente para simulação Rodonaves. Restante: ${remaining}ms`);
+  }
+
   const response = await fetchWithTimeout(
     'https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao',
     {
@@ -186,7 +349,7 @@ async function getRodonavesSimulation(token, payload) {
       },
       body: JSON.stringify(payload),
     },
-    3500
+    safeTimeout
   );
 
   const text = await response.text();
@@ -202,7 +365,7 @@ async function getRodonavesSimulation(token, payload) {
 // Handler Vercel / Yampi
 // =========================
 export default async function handler(req, res) {
-  const startedAt = Date.now();
+  const startedAt = nowMs();
 
   if (req.method === 'GET') {
     return res.status(200).json({
@@ -216,7 +379,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Logs leves
     console.log('METHOD:', req.method);
 
     logDebug('HEADERS:', req.headers);
@@ -227,7 +389,6 @@ export default async function handler(req, res) {
     // =========================
     const destinationZipCode = onlyDigits(req.body?.zipcode);
     const eletronicInvoiceValue = Number(req.body?.amount || 0);
-
     const skus = Array.isArray(req.body?.skus) ? req.body.skus : [];
 
     const totalWeight = skus.reduce((sum, sku) => {
@@ -283,7 +444,7 @@ export default async function handler(req, res) {
     const token = await getRodonavesToken();
 
     // =========================
-    // 4) City id dinâmico
+    // 4) City id
     // =========================
     const destinationCityResponse = await getCityByZipcode(token, destinationZipCode);
 
@@ -293,8 +454,22 @@ export default async function handler(req, res) {
 
     console.log('destinationCityId:', destinationCityId);
 
+    // Se já sabemos que essa cidade não tem cobertura, retorna vazio rápido.
+    const noCoverageKey = String(destinationCityId);
+
+    if (CACHE.noCoverageByCityId.has(noCoverageKey)) {
+      const expiresAt = CACHE.noCoverageByCityId.get(noCoverageKey);
+
+      if (expiresAt > nowMs()) {
+        console.log('RODONAVES SEM COBERTURA CACHE:', destinationCityId);
+        return res.status(200).json({ quotes: [] });
+      }
+
+      CACHE.noCoverageByCityId.delete(noCoverageKey);
+    }
+
     // =========================
-    // 5) Payload de simulação
+    // 5) Payload da simulação
     // =========================
     const rodonavesSimulationPayload = {
       OriginZipCode: originZipCode,
@@ -310,12 +485,43 @@ export default async function handler(req, res) {
 
     logDebug('RODONAVES SIMULATION PAYLOAD:', rodonavesSimulationPayload);
 
+    const quoteKey = buildQuoteKey({
+      originZipCode,
+      originCityId,
+      destinationZipCode,
+      destinationCityId,
+      totalWeight,
+      eletronicInvoiceValue,
+      totalPackages,
+    });
+
     // =========================
-    // 6) Simulação
+    // 6) Quote cache
+    // =========================
+    const cachedQuote = getCachedQuote(quoteKey);
+
+    if (cachedQuote) {
+      console.log('QUOTE CACHE OK');
+      console.log('TOTAL EXECUTION MS:', elapsedMs(startedAt));
+
+      return res.status(200).json({
+        quotes: [cachedQuote],
+      });
+    }
+
+    // Se já gastou tempo demais antes da simulação, não força timeout longo.
+    if (remainingBudgetMs(startedAt) < 1200) {
+      console.log('SEM TEMPO PARA SIMULAÇÃO. RESTANTE:', remainingBudgetMs(startedAt));
+      return res.status(200).json({ quotes: [] });
+    }
+
+    // =========================
+    // 7) Simulação
     // =========================
     const rodonavesSimulation = await getRodonavesSimulation(
       token,
-      rodonavesSimulationPayload
+      rodonavesSimulationPayload,
+      startedAt
     );
 
     console.log('RODONAVES SIMULATION VALUE:', rodonavesSimulation?.Value);
@@ -324,47 +530,31 @@ export default async function handler(req, res) {
 
     if (!rodonavesSimulation || rodonavesSimulation.Message) {
       console.log('RODONAVES SEM COTAÇÃO:', rodonavesSimulation?.Message);
-      return res.status(200).json({ quotes: [] });
-    }
 
-    const price = Number(rodonavesSimulation.Value || 0);
-    const days = Number(rodonavesSimulation.DeliveryTime || 0);
-
-    if (!price || price <= 0 || !days || days <= 0) {
-      console.log('RODONAVES RETORNO INVÁLIDO:', {
-        price,
-        days,
-      });
+      if (isNoCoverageError(rodonavesSimulation?.Message)) {
+        CACHE.noCoverageByCityId.set(noCoverageKey, nowMs() + 24 * 60 * 60 * 1000);
+      }
 
       return res.status(200).json({ quotes: [] });
     }
 
-    const quoteId =
-      rodonavesSimulation.ProtocolNumber &&
-      rodonavesSimulation.ProtocolNumber !== '0'
-        ? String(rodonavesSimulation.ProtocolNumber)
-        : `rodonaves-${Date.now()}`;
+    const quote = buildYampiQuote(rodonavesSimulation);
 
-    const totalMs = Date.now() - startedAt;
-    console.log('TOTAL EXECUTION MS:', totalMs);
+    if (!quote) {
+      console.log('RODONAVES RETORNO INVÁLIDO');
+      return res.status(200).json({ quotes: [] });
+    }
+
+    setCachedQuote(quoteKey, quote);
+
+    console.log('TOTAL EXECUTION MS:', elapsedMs(startedAt));
 
     return res.status(200).json({
-      quotes: [
-        {
-          name: 'Rodonaves',
-          service: 'Normal',
-          price,
-          days,
-          quote_id: quoteId,
-          free_shipment: false,
-        },
-      ],
+      quotes: [quote],
     });
   } catch (error) {
-    const totalMs = Date.now() - startedAt;
-
     console.error('ERRO:', error.message);
-    console.log('TOTAL EXECUTION MS WITH ERROR:', totalMs);
+    console.log('TOTAL EXECUTION MS WITH ERROR:', elapsedMs(startedAt));
 
     return res.status(200).json({
       quotes: [],
