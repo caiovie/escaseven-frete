@@ -9,12 +9,17 @@ const CACHE = globalThis.__RODONAVES_CACHE__ || {
 
 globalThis.__RODONAVES_CACHE__ = CACHE;
 
-const YAMPI_SAFE_LIMIT_MS = 3900;
-const TOKEN_TIMEOUT_MS = 1800;
-const CITY_TIMEOUT_MS = 1800;
-const SIMULATION_TIMEOUT_MS = 3200;
+// =========================
+// Configurações fixas
+// =========================
+const TOKEN_TIMEOUT_MS = 3000;
+const CITY_TIMEOUT_MS = 3000;
+const SIMULATION_TIMEOUT_MS = 8000;
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 
+// =========================
+// Helpers
+// =========================
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -23,15 +28,7 @@ function elapsedMs(startedAt) {
   return Date.now() - startedAt;
 }
 
-function remainingMs(startedAt) {
-  return YAMPI_SAFE_LIMIT_MS - elapsedMs(startedAt);
-}
-
-function jsonResponse(res, body) {
-  return res.status(200).json(body);
-}
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -85,6 +82,33 @@ function setCachedQuote(key, quote) {
   });
 }
 
+function buildYampiQuote(simulation) {
+  if (!simulation || simulation.Message) return null;
+
+  const price = Number(simulation.Value || 0);
+  const days = Number(simulation.DeliveryTime || 0);
+
+  if (!price || price <= 0) return null;
+  if (!days || days <= 0) return null;
+
+  const quoteId =
+    simulation.ProtocolNumber && simulation.ProtocolNumber !== '0'
+      ? String(simulation.ProtocolNumber)
+      : `rodonaves-${Date.now()}`;
+
+  return {
+    name: 'Rodonaves',
+    service: 'Normal',
+    price,
+    days,
+    quote_id: quoteId,
+    free_shipment: false,
+  };
+}
+
+// =========================
+// Token Rodonaves
+// =========================
 async function getRodonavesToken() {
   const now = Date.now();
 
@@ -133,6 +157,9 @@ async function getRodonavesToken() {
   return CACHE.token;
 }
 
+// =========================
+// Cidade por CEP
+// =========================
 async function getCityByZipcode(token, zipcode) {
   const cleanZipcode = onlyDigits(zipcode);
 
@@ -190,7 +217,12 @@ function extractCityId(cityResponse) {
   throw new Error(`CityId não encontrado: ${JSON.stringify(cityResponse)}`);
 }
 
+// =========================
+// Simulação Rodonaves
+// =========================
 async function getRodonavesSimulation(token, payload) {
+  console.log('SIMULATION TIMEOUT MS:', SIMULATION_TIMEOUT_MS);
+
   const response = await fetchWithTimeout(
     'https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao',
     {
@@ -202,7 +234,7 @@ async function getRodonavesSimulation(token, payload) {
       },
       body: JSON.stringify(payload),
     },
-    8000
+    SIMULATION_TIMEOUT_MS
   );
 
   const text = await response.text();
@@ -214,42 +246,9 @@ async function getRodonavesSimulation(token, payload) {
   return JSON.parse(text);
 }
 
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`Erro simulação Rodonaves: ${text}`);
-  }
-
-  return JSON.parse(text);
-}
-
-function buildYampiQuote(simulation) {
-  if (!simulation || simulation.Message) {
-    return null;
-  }
-
-  const price = Number(simulation.Value || 0);
-  const days = Number(simulation.DeliveryTime || 0);
-
-  if (!price || price <= 0 || !days || days <= 0) {
-    return null;
-  }
-
-  const quoteId =
-    simulation.ProtocolNumber && simulation.ProtocolNumber !== '0'
-      ? String(simulation.ProtocolNumber)
-      : `rodonaves-${Date.now()}`;
-
-  return {
-    name: 'Rodonaves',
-    service: 'Normal',
-    price,
-    days,
-    quote_id: quoteId,
-    free_shipment: false,
-  };
-}
-
+// =========================
+// Dados Yampi
+// =========================
 function getCartDataFromYampi(body) {
   const destinationZipCode = onlyDigits(body?.zipcode);
   const amount = Number(body?.amount || 0);
@@ -312,6 +311,9 @@ function validateBaseData({
   }
 }
 
+// =========================
+// Handler principal
+// =========================
 export default async function handler(req, res) {
   const startedAt = Date.now();
 
@@ -389,16 +391,17 @@ export default async function handler(req, res) {
 
     if (cachedQuote) {
       console.log('QUOTE CACHE OK');
+      console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [cachedQuote] }));
       console.log('TOTAL MS:', elapsedMs(startedAt));
 
-      return jsonResponse(res, {
+      return res.status(200).json({
         quotes: [cachedQuote],
       });
     }
 
     console.log('PAYLOAD OK');
 
-    const simulation = await getRodonavesSimulation(token, payload, startedAt);
+    const simulation = await getRodonavesSimulation(token, payload);
 
     console.log(
       'SIMULATION RESULT:',
@@ -416,7 +419,7 @@ export default async function handler(req, res) {
       console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [] }));
       console.log('TOTAL MS:', elapsedMs(startedAt));
 
-      return jsonResponse(res, {
+      return res.status(200).json({
         quotes: [],
       });
     }
@@ -426,7 +429,7 @@ export default async function handler(req, res) {
     console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [quote] }));
     console.log('TOTAL MS:', elapsedMs(startedAt));
 
-    return jsonResponse(res, {
+    return res.status(200).json({
       quotes: [quote],
     });
   } catch (error) {
@@ -434,7 +437,7 @@ export default async function handler(req, res) {
     console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [] }));
     console.log('TOTAL MS ERROR:', elapsedMs(startedAt));
 
-    return jsonResponse(res, {
+    return res.status(200).json({
       quotes: [],
     });
   }
