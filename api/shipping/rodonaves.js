@@ -1,37 +1,4 @@
-const CACHE = globalThis.__RODONAVES_CACHE__ || {
-  token: null,
-  tokenExpiresAt: 0,
-  cityByZipcode: new Map(),
-};
-
-globalThis.__RODONAVES_CACHE__ = CACHE;
-
-function onlyDigits(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 3500) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function getRodonavesToken() {
-  const now = Date.now();
-
-  if (CACHE.token && CACHE.tokenExpiresAt > now) {
-    console.log('TOKEN CACHE OK');
-    return CACHE.token;
-  }
-
   const body = new URLSearchParams({
     grant_type: 'password',
     username: process.env.RODONAVES_USERNAME,
@@ -40,106 +7,86 @@ async function getRodonavesToken() {
     auth_type: process.env.RODONAVES_AUTH_TYPE || 'dev',
   });
 
-  const response = await fetchWithTimeout(
-    'https://quotation-apigateway.rte.com.br/token',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body,
+  const response = await fetch('https://quotation-apigateway.rte.com.br/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    2000
-  );
+    body,
+  });
 
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Erro token Rodonaves: ${text}`);
+    throw new Error(`Erro ao autenticar Rodonaves: ${text}`);
   }
 
   const data = JSON.parse(text);
 
   if (!data.access_token) {
-    throw new Error('Token não retornado pela Rodonaves');
+    throw new Error('Rodonaves não retornou access_token');
   }
 
-  CACHE.token = data.access_token;
-  CACHE.tokenExpiresAt = Date.now() + 7 * 60 * 60 * 1000;
-
-  console.log('TOKEN NOVO OK');
-
-  return CACHE.token;
+  return data.access_token;
 }
 
-async function getCityByZipcode(token, zipcode) {
-  const cleanZipcode = onlyDigits(zipcode);
+async function getCityByZipcode(token, zipCode) {
+  const url = `https://dne-api.rte.com.br/api/cities/byzipcode?zipCode=${encodeURIComponent(
+    zipCode
+  )}`;
 
-  if (CACHE.cityByZipcode.has(cleanZipcode)) {
-    console.log('CITY CACHE OK:', cleanZipcode);
-    return CACHE.cityByZipcode.get(cleanZipcode);
-  }
-
-  const url = `https://dne-api.rte.com.br/api/cities/byzipcode?zipCode=${encodeURIComponent(cleanZipcode)}`;
-
-  const response = await fetchWithTimeout(
-    url,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
     },
-    2500
-  );
+  });
 
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Erro cidade Rodonaves: ${text}`);
+    throw new Error(`Erro busca-cidade Rodonaves: ${text}`);
   }
 
-  const city = JSON.parse(text);
-
-  CACHE.cityByZipcode.set(cleanZipcode, city);
-
-  console.log('CITY NOVA OK:', cleanZipcode, city?.Id || city?.id);
-
-  return city;
+  const data = JSON.parse(text);
+  return data;
 }
 
-function extractCityId(city) {
-  if (!city) {
-    throw new Error('Cidade não retornada');
+function extractCityId(cityResponse) {
+  if (!cityResponse) {
+    throw new Error('Resposta de cidade vazia');
   }
 
-  if (city.Id) return Number(city.Id);
-  if (city.id) return Number(city.id);
-  if (city.CityId) return Number(city.CityId);
-  if (city.cityId) return Number(city.cityId);
+  // cobre formatos comuns possíveis
+  if (typeof cityResponse.Id !== 'undefined') return Number(cityResponse.Id);
+  if (typeof cityResponse.id !== 'undefined') return Number(cityResponse.id);
+  if (typeof cityResponse.CityId !== 'undefined') return Number(cityResponse.CityId);
+  if (typeof cityResponse.cityId !== 'undefined') return Number(cityResponse.cityId);
 
-  if (Array.isArray(city) && city.length > 0) {
-    return extractCityId(city[0]);
+  if (Array.isArray(cityResponse) && cityResponse.length > 0) {
+    const item = cityResponse[0];
+    if (typeof item.Id !== 'undefined') return Number(item.Id);
+    if (typeof item.id !== 'undefined') return Number(item.id);
+    if (typeof item.CityId !== 'undefined') return Number(item.CityId);
+    if (typeof item.cityId !== 'undefined') return Number(item.cityId);
   }
 
-  throw new Error(`CityId não encontrado: ${JSON.stringify(city)}`);
-}
-
-async function simulateRodonaves(token, payload) {
-  const response = await fetchWithTimeout(
-    'https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(payload),
-    },
-    10000
+  throw new Error(
+    `Não foi possível identificar o city id na resposta: ${JSON.stringify(cityResponse)}`
   );
+}
+
+async function getRodonavesSimulation(token, payload) {
+  const response = await fetch('https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
 
   const text = await response.text();
 
@@ -151,127 +98,149 @@ async function simulateRodonaves(token, payload) {
 }
 
 export default async function handler(req, res) {
-  const startedAt = Date.now();
-
   if (req.method === 'GET') {
     return res.status(200).json({
       ok: true,
-      message: 'API Rodonaves EscaSeven no ar',
+      message: 'API Rodonaves da EscaSeven no ar',
     });
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Method not allowed',
-    });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const destinationZipCode = onlyDigits(req.body?.zipcode);
-    const amount = Number(req.body?.amount || 0);
-    const skus = Array.isArray(req.body?.skus) ? req.body.skus : [];
+    console.log('METHOD:', req.method);
+    console.log('HEADERS:', JSON.stringify(req.headers, null, 2));
+    console.log('BODY:', JSON.stringify(req.body, null, 2));
 
-    const totalWeight = skus.reduce((sum, sku) => {
-      return sum + Number(sku?.weight || 0) * Number(sku?.quantity || 0);
+    // =========================
+    // 1) Dados vindos da Yampi
+    // =========================
+    const destinationZipCode = req.body?.zipcode || '';
+    const eletronicInvoiceValue = Number(req.body?.amount || 0);
+
+    const totalWeight = (req.body?.skus || []).reduce((sum, sku) => {
+      const weight = Number(sku?.weight || 0);
+      const quantity = Number(sku?.quantity || 0);
+      return sum + weight * quantity;
     }, 0);
 
-    const totalPackages = skus.reduce((sum, sku) => {
+    const totalPackages = (req.body?.skus || []).reduce((sum, sku) => {
       return sum + Number(sku?.quantity || 0);
     }, 0);
 
-    const originZipCode = onlyDigits(process.env.ESCASEVEN_ORIGIN_ZIP);
+    console.log('destinationZipCode:', destinationZipCode);
+    console.log('eletronicInvoiceValue:', eletronicInvoiceValue);
+    console.log('totalWeight:', totalWeight);
+    console.log('totalPackages:', totalPackages);
+
+    // =======================================
+    // 2) Dados fixos/configurados na Vercel
+    // =======================================
+    const originZipCode = process.env.ESCASEVEN_ORIGIN_ZIP;
     const originCityId = Number(process.env.ESCASEVEN_ORIGIN_CITY_ID);
-    const customerTaxIdRegistration = process.env.RODONAVES_CUSTOMER_TAX_ID;
+    const customerTaxIdRegistration =
+      process.env.RODONAVES_CUSTOMER_TAX_ID || '51835028000180';
 
-    console.log('CEP:', destinationZipCode);
-    console.log('VALOR:', amount);
-    console.log('PESO:', totalWeight);
-    console.log('VOLUMES:', totalPackages);
-
-    if (!destinationZipCode || destinationZipCode.length !== 8) {
-      throw new Error('CEP inválido');
+    if (!originZipCode) {
+      throw new Error('Variável ESCASEVEN_ORIGIN_ZIP não configurada');
     }
 
-    if (!amount || amount <= 0) {
-      throw new Error('Valor inválido');
+    if (!originCityId || Number.isNaN(originCityId)) {
+      throw new Error('Variável ESCASEVEN_ORIGIN_CITY_ID não configurada corretamente');
     }
 
-    if (!totalWeight || totalWeight <= 0) {
-      throw new Error('Peso inválido');
+    if (!destinationZipCode) {
+      throw new Error('CEP de destino não recebido da Yampi');
     }
 
-    if (!totalPackages || totalPackages <= 0) {
-      throw new Error('Volumes inválidos');
+    if (!totalPackages || totalPackages < 1) {
+      throw new Error('TotalPackages inválido');
     }
 
-    if (!originZipCode || !originCityId || !customerTaxIdRegistration) {
-      throw new Error('Variáveis da Vercel incompletas');
-    }
-
+    // =========================
+    // 3) Token da Rodonaves
+    // =========================
     const token = await getRodonavesToken();
+    console.log('TOKEN OK?', !!token);
 
-    const city = await getCityByZipcode(token, destinationZipCode);
-    const destinationCityId = extractCityId(city);
+    // =========================
+    // 4) Buscar city id do destino por CEP
+    // =========================
+    const destinationCityResponse = await getCityByZipcode(token, destinationZipCode);
 
-    console.log('DESTINATION CITY ID:', destinationCityId);
+    console.log(
+      'RODONAVES DESTINATION CITY RESPONSE:',
+      JSON.stringify(destinationCityResponse, null, 2)
+    );
 
-    const payload = {
+    const destinationCityId = extractCityId(destinationCityResponse);
+
+    console.log('destinationCityId:', destinationCityId);
+
+    // =========================
+    // 5) Payload da simulação
+    // =========================
+    const rodonavesSimulationPayload = {
       OriginZipCode: originZipCode,
       OriginCityId: originCityId,
       DestinationZipCode: destinationZipCode,
       DestinationCityId: destinationCityId,
       TotalWeight: totalWeight,
-      EletronicInvoiceValue: amount,
+      EletronicInvoiceValue: eletronicInvoiceValue,
       CustomerTaxIdRegistration: customerTaxIdRegistration,
       TotalPackages: totalPackages,
       Packs: [],
     };
 
-    console.log('PAYLOAD OK');
+    console.log(
+      'RODONAVES SIMULATION PAYLOAD:',
+      JSON.stringify(rodonavesSimulationPayload, null, 2)
+    );
 
-    const simulation = await simulateRodonaves(token, payload);
+    // =========================
+    // 6) Simulação Rodonaves
+    // =========================
+    const rodonavesSimulation = await getRodonavesSimulation(
+      token,
+      rodonavesSimulationPayload
+    );
 
-    console.log('SIMULATION:', JSON.stringify({
-      Value: simulation?.Value,
-      DeliveryTime: simulation?.DeliveryTime,
-      Message: simulation?.Message,
-    }));
+    console.log(
+      'RODONAVES SIMULATION RESPONSE:',
+      JSON.stringify(rodonavesSimulation, null, 2)
+    );
 
-    if (!simulation || simulation.Message) {
-      return res.status(200).json({
-        quotes: [],
-      });
-    }
-
-    const price = Number(simulation.Value || 0);
-    const days = Number(simulation.DeliveryTime || 0);
-
-    if (!price || price <= 0 || !days || days <= 0) {
-      return res.status(200).json({
-        quotes: [],
-      });
-    }
-
-    console.log('TOTAL MS:', Date.now() - startedAt);
+    // =========================
+    // 7) Retorno real para Yampi
+    // =========================
+    const quoteId =
+      rodonavesSimulation.ProtocolNumber &&
+      rodonavesSimulation.ProtocolNumber !== '0'
+        ? String(rodonavesSimulation.ProtocolNumber)
+        : `rodonaves-${Date.now()}`;
 
     return res.status(200).json({
       quotes: [
         {
           name: 'Rodonaves',
           service: 'Normal',
-          price,
-          days,
-          quote_id: `rodonaves-${Date.now()}`,
+          price: Number(rodonavesSimulation.Value || 0),
+          days: Number(rodonavesSimulation.DeliveryTime || 0),
+          quote_id: quoteId,
           free_shipment: false,
         },
       ],
     });
   } catch (error) {
-    console.error('ERRO:', error.message);
-    console.log('TOTAL MS ERROR:', Date.now() - startedAt);
+    console.error('ERRO:', error);
 
+    // Evita quebrar completamente o checkout
     return res.status(200).json({
       quotes: [],
+      error: 'Internal error',
+      message: error.message,
     });
   }
 }
