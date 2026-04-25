@@ -190,17 +190,7 @@ function extractCityId(cityResponse) {
   throw new Error(`CityId não encontrado: ${JSON.stringify(cityResponse)}`);
 }
 
-async function getRodonavesSimulation(token, payload, startedAt) {
-  const availableMs = remainingMs(startedAt);
-
-  if (availableMs < 1200) {
-    throw new Error(`Sem tempo suficiente para simulação: ${availableMs}ms restantes`);
-  }
-
-  const timeoutMs = Math.min(SIMULATION_TIMEOUT_MS, availableMs - 250);
-
-  console.log('SIMULATION TIMEOUT MS:', timeoutMs);
-
+async function getRodonavesSimulation(token, payload) {
   const response = await fetchWithTimeout(
     'https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao',
     {
@@ -212,8 +202,17 @@ async function getRodonavesSimulation(token, payload, startedAt) {
       },
       body: JSON.stringify(payload),
     },
-    timeoutMs
+    8000
   );
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Erro simulação Rodonaves: ${text}`);
+  }
+
+  return JSON.parse(text);
+}
 
   const text = await response.text();
 
