@@ -10,15 +10,55 @@ const CACHE = globalThis.__RODONAVES_CACHE__ || {
 globalThis.__RODONAVES_CACHE__ = CACHE;
 
 // =========================
-// Configurações fixas
+// CONFIGURAÇÕES FIXAS
 // =========================
-const TOKEN_TIMEOUT_MS = 3000;
-const CITY_TIMEOUT_MS = 3000;
-const SIMULATION_TIMEOUT_MS = 8000;
+const TOKEN_TIMEOUT_MS = 1800;
+const CITY_TIMEOUT_MS = 1800;
+const SIMULATION_TIMEOUT_MS = 3000;
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 
 // =========================
-// Helpers
+// TABELA RÁPIDA DE FALLBACK
+// =========================
+// Ajuste esses valores depois com a EscaSeven/Rodonaves.
+// Eles servem para garantir que a opção Rodonaves apareça no checkout
+// sem depender da simula-cotacao ao vivo em todos os casos.
+const FALLBACK_RULES = [
+  // Osasco/SP e região próxima: CEPs 06000-001 até 06299-999
+  {
+    name: 'Rodonaves',
+    service: 'Normal',
+    startZip: '06000001',
+    endZip: '06299999',
+    cityId: 9432,
+    days: 1,
+    weightPrices: [
+      { maxWeight: 6, price: 159.32 },
+      { maxWeight: 13, price: 176.89 },
+      { maxWeight: 25, price: 195.98 },
+      { maxWeight: 45, price: 213.5 },
+    ],
+  },
+
+  // Rio de Janeiro/RJ: CEPs 20000-001 até 23799-999
+  {
+    name: 'Rodonaves',
+    service: 'Normal',
+    startZip: '20000001',
+    endZip: '23799999',
+    cityId: 7043,
+    days: 5,
+    weightPrices: [
+      { maxWeight: 6, price: 213.5 },
+      { maxWeight: 13, price: 241.14 },
+      { maxWeight: 25, price: 242.26 },
+      { maxWeight: 45, price: 270.75 },
+    ],
+  },
+];
+
+// =========================
+// HELPERS
 // =========================
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -28,36 +68,67 @@ function elapsedMs(startedAt) {
   return Date.now() - startedAt;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+function zipToNumber(zip) {
+  return Number(onlyDigits(zip));
+}
 
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
+function isZipInRange(zip, startZip, endZip) {
+  const value = zipToNumber(zip);
+  return value >= zipToNumber(startZip) && value <= zipToNumber(endZip);
+}
+
+function buildYampiQuote({ name, service, price, days, source }) {
+  const numericPrice = Number(price || 0);
+  const numericDays = Number(days || 0);
+
+  if (!numericPrice || numericPrice <= 0 || !numericDays || numericDays <= 0) {
+    return null;
   }
+
+  return {
+    name,
+    service,
+    price: numericPrice,
+    days: numericDays,
+    quote_id: `${source || 'rodonaves'}-${Date.now()}`,
+    free_shipment: false,
+  };
+}
+
+function findFallbackQuote(destinationZipCode, totalWeight) {
+  const rule = FALLBACK_RULES.find((item) =>
+    isZipInRange(destinationZipCode, item.startZip, item.endZip)
+  );
+
+  if (!rule) return null;
+
+  const priceRule = rule.weightPrices.find((item) => totalWeight <= item.maxWeight);
+
+  if (!priceRule) return null;
+
+  return {
+    quote: buildYampiQuote({
+      name: rule.name,
+      service: rule.service,
+      price: priceRule.price,
+      days: rule.days,
+      source: 'rodonaves-fallback',
+    }),
+    cityId: rule.cityId,
+    rule,
+  };
 }
 
 function buildQuoteKey({
-  originZipCode,
-  originCityId,
   destinationZipCode,
-  destinationCityId,
-  totalWeight,
   amount,
+  totalWeight,
   totalPackages,
 }) {
   return [
-    originZipCode,
-    originCityId,
     destinationZipCode,
-    destinationCityId,
-    Number(totalWeight).toFixed(3),
     Number(amount).toFixed(2),
+    Number(totalWeight).toFixed(3),
     totalPackages,
   ].join('|');
 }
@@ -82,32 +153,22 @@ function setCachedQuote(key, quote) {
   });
 }
 
-function buildYampiQuote(simulation) {
-  if (!simulation || simulation.Message) return null;
+async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  const price = Number(simulation.Value || 0);
-  const days = Number(simulation.DeliveryTime || 0);
-
-  if (!price || price <= 0) return null;
-  if (!days || days <= 0) return null;
-
-  const quoteId =
-    simulation.ProtocolNumber && simulation.ProtocolNumber !== '0'
-      ? String(simulation.ProtocolNumber)
-      : `rodonaves-${Date.now()}`;
-
-  return {
-    name: 'Rodonaves',
-    service: 'Normal',
-    price,
-    days,
-    quote_id: quoteId,
-    free_shipment: false,
-  };
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // =========================
-// Token Rodonaves
+// RODONAVES TOKEN
 // =========================
 async function getRodonavesToken() {
   const now = Date.now();
@@ -140,7 +201,7 @@ async function getRodonavesToken() {
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Erro ao autenticar Rodonaves: ${text}`);
+    throw new Error(`Erro token Rodonaves: ${text}`);
   }
 
   const data = JSON.parse(text);
@@ -158,20 +219,18 @@ async function getRodonavesToken() {
 }
 
 // =========================
-// Cidade por CEP
+// CIDADE POR CEP
 // =========================
-async function getCityByZipcode(token, zipcode) {
-  const cleanZipcode = onlyDigits(zipcode);
+async function getCityByZipcode(token, zipCode) {
+  const cleanZipCode = onlyDigits(zipCode);
 
-  if (CACHE.cityByZipcode.has(cleanZipcode)) {
-    const cachedCity = CACHE.cityByZipcode.get(cleanZipcode);
-    console.log('CITY CACHE OK:', cleanZipcode, cachedCity?.Id || cachedCity?.id);
+  if (CACHE.cityByZipcode.has(cleanZipCode)) {
+    const cachedCity = CACHE.cityByZipcode.get(cleanZipCode);
+    console.log('CITY CACHE OK:', cleanZipCode, cachedCity?.Id || cachedCity?.id);
     return cachedCity;
   }
 
-  const url = `https://dne-api.rte.com.br/api/cities/byzipcode?zipCode=${encodeURIComponent(
-    cleanZipcode
-  )}`;
+  const url = `https://dne-api.rte.com.br/api/cities/byzipcode?zipCode=${encodeURIComponent(cleanZipCode)}`;
 
   const response = await fetchWithTimeout(
     url,
@@ -188,21 +247,21 @@ async function getCityByZipcode(token, zipcode) {
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Erro busca-cidade Rodonaves: ${text}`);
+    throw new Error(`Erro cidade Rodonaves: ${text}`);
   }
 
   const data = JSON.parse(text);
 
-  CACHE.cityByZipcode.set(cleanZipcode, data);
+  CACHE.cityByZipcode.set(cleanZipCode, data);
 
-  console.log('CITY NOVA OK:', cleanZipcode, data?.Id || data?.id);
+  console.log('CITY NOVA OK:', cleanZipCode, data?.Id || data?.id);
 
   return data;
 }
 
 function extractCityId(cityResponse) {
   if (!cityResponse) {
-    throw new Error('Resposta de cidade vazia');
+    throw new Error('Cidade não retornada');
   }
 
   if (typeof cityResponse.Id !== 'undefined') return Number(cityResponse.Id);
@@ -218,11 +277,9 @@ function extractCityId(cityResponse) {
 }
 
 // =========================
-// Simulação Rodonaves
+// SIMULAÇÃO RODONAVES AO VIVO
 // =========================
 async function getRodonavesSimulation(token, payload) {
-  console.log('SIMULATION TIMEOUT MS:', SIMULATION_TIMEOUT_MS);
-
   const response = await fetchWithTimeout(
     'https://quotation-apigateway.rte.com.br/api/v1/simula-cotacao',
     {
@@ -246,8 +303,20 @@ async function getRodonavesSimulation(token, payload) {
   return JSON.parse(text);
 }
 
+function buildQuoteFromSimulation(simulation) {
+  if (!simulation || simulation.Message) return null;
+
+  return buildYampiQuote({
+    name: 'Rodonaves',
+    service: 'Normal',
+    price: Number(simulation.Value || 0),
+    days: Number(simulation.DeliveryTime || 0),
+    source: 'rodonaves-live',
+  });
+}
+
 // =========================
-// Dados Yampi
+// DADOS DA YAMPI
 // =========================
 function getCartDataFromYampi(body) {
   const destinationZipCode = onlyDigits(body?.zipcode);
@@ -257,7 +326,6 @@ function getCartDataFromYampi(body) {
   const totalWeight = skus.reduce((sum, sku) => {
     const weight = Number(sku?.weight || 0);
     const quantity = Number(sku?.quantity || 0);
-
     return sum + weight * quantity;
   }, 0);
 
@@ -287,15 +355,15 @@ function validateBaseData({
   }
 
   if (!amount || amount <= 0) {
-    throw new Error('Valor da mercadoria inválido');
+    throw new Error('Valor inválido');
   }
 
   if (!totalWeight || totalWeight <= 0) {
-    throw new Error('Peso total inválido');
+    throw new Error('Peso inválido');
   }
 
   if (!totalPackages || totalPackages <= 0) {
-    throw new Error('Quantidade de volumes inválida');
+    throw new Error('Volumes inválidos');
   }
 
   if (!originZipCode || originZipCode.length !== 8) {
@@ -312,7 +380,7 @@ function validateBaseData({
 }
 
 // =========================
-// Handler principal
+// HANDLER PRINCIPAL
 // =========================
 export default async function handler(req, res) {
   const startedAt = Date.now();
@@ -321,7 +389,6 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       message: 'API Rodonaves EscaSeven no ar',
-      status: 'ready',
     });
   }
 
@@ -358,6 +425,47 @@ export default async function handler(req, res) {
       customerTaxIdRegistration,
     });
 
+    const quoteKey = buildQuoteKey({
+      destinationZipCode,
+      amount,
+      totalWeight,
+      totalPackages,
+    });
+
+    // 1) CACHE PRIMEIRO
+    const cachedQuote = getCachedQuote(quoteKey);
+
+    if (cachedQuote) {
+      console.log('QUOTE CACHE OK');
+      console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [cachedQuote] }));
+      console.log('TOTAL MS:', elapsedMs(startedAt));
+
+      return res.status(200).json({
+        quotes: [cachedQuote],
+      });
+    }
+
+    // 2) FALLBACK RÁPIDO PARA REGIÕES CONHECIDAS
+    const fallbackResult = findFallbackQuote(destinationZipCode, totalWeight);
+
+    if (fallbackResult?.quote) {
+      setCachedQuote(quoteKey, fallbackResult.quote);
+
+      console.log('FALLBACK QUOTE OK:', {
+        cityId: fallbackResult.cityId,
+        price: fallbackResult.quote.price,
+        days: fallbackResult.quote.days,
+      });
+
+      console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [fallbackResult.quote] }));
+      console.log('TOTAL MS:', elapsedMs(startedAt));
+
+      return res.status(200).json({
+        quotes: [fallbackResult.quote],
+      });
+    }
+
+    // 3) RODONAVES AO VIVO SÓ SE NÃO HOUVER FALLBACK
     const token = await getRodonavesToken();
 
     const city = await getCityByZipcode(token, destinationZipCode);
@@ -377,28 +485,6 @@ export default async function handler(req, res) {
       Packs: [],
     };
 
-    const quoteKey = buildQuoteKey({
-      originZipCode,
-      originCityId,
-      destinationZipCode,
-      destinationCityId,
-      totalWeight,
-      amount,
-      totalPackages,
-    });
-
-    const cachedQuote = getCachedQuote(quoteKey);
-
-    if (cachedQuote) {
-      console.log('QUOTE CACHE OK');
-      console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [cachedQuote] }));
-      console.log('TOTAL MS:', elapsedMs(startedAt));
-
-      return res.status(200).json({
-        quotes: [cachedQuote],
-      });
-    }
-
     console.log('PAYLOAD OK');
 
     const simulation = await getRodonavesSimulation(token, payload);
@@ -412,9 +498,9 @@ export default async function handler(req, res) {
       })
     );
 
-    const quote = buildYampiQuote(simulation);
+    const liveQuote = buildQuoteFromSimulation(simulation);
 
-    if (!quote) {
+    if (!liveQuote) {
       console.log('SEM COTAÇÃO RODONAVES');
       console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [] }));
       console.log('TOTAL MS:', elapsedMs(startedAt));
@@ -424,13 +510,13 @@ export default async function handler(req, res) {
       });
     }
 
-    setCachedQuote(quoteKey, quote);
+    setCachedQuote(quoteKey, liveQuote);
 
-    console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [quote] }));
+    console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [liveQuote] }));
     console.log('TOTAL MS:', elapsedMs(startedAt));
 
     return res.status(200).json({
-      quotes: [quote],
+      quotes: [liveQuote],
     });
   } catch (error) {
     console.error('ERRO:', error.message);
