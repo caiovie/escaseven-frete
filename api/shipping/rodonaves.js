@@ -24,6 +24,14 @@ const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 // IMPORTANTE: ajustar este valor conforme dados reais coletados via n8n.
 const FALLBACK_PRICE_MULTIPLIER = 2.0;
 
+// Buffer adicionado ao prazo de transporte da Rodonaves para refletir o ciclo
+// completo de entrega ao cliente:
+//   - 2-3 dias para EscaSeven separar, emitir NF e agendar coleta
+//   - prazo_pf > prazo_pj (a tabela usa PJ, mas vendemos para PF)
+//   - margem de segurança para fins de semana / atrasos
+// Cliente prefere "promessa cumprida" do que "promessa quebrada".
+const DELIVERY_DAYS_BUFFER = 3;
+
 // =========================
 // FALLBACK REGIONAL - BRASIL
 // Tabela RM Escadas (Rodonaves) - apenas frete peso (sem generalidades)
@@ -212,7 +220,7 @@ function findFallbackQuote(destinationZipCode, totalWeight) {
     name: rule.name,
     service: rule.service,
     price: priceRule.price * FALLBACK_PRICE_MULTIPLIER,
-    days: rule.days,
+    days: rule.days + DELIVERY_DAYS_BUFFER,
     source: 'rodonaves-fallback',
   });
 }
@@ -224,7 +232,7 @@ function findEmergencyQuote(totalWeight) {
     name: EMERGENCY_FALLBACK.name,
     service: EMERGENCY_FALLBACK.service,
     price: priceRule.price * FALLBACK_PRICE_MULTIPLIER,
-    days: EMERGENCY_FALLBACK.days,
+    days: EMERGENCY_FALLBACK.days + DELIVERY_DAYS_BUFFER,
     source: 'rodonaves-emergency',
   });
 }
