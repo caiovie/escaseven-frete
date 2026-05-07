@@ -1,0 +1,8 @@
+{
+  "regions": ["gru1"],
+  "functions": {
+    "api/shipping/rodonaves.js": {
+      "maxDuration": 10
+    }
+  }
+}
