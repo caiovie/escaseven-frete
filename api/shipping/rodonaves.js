@@ -764,6 +764,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  console.log('YAMPI BODY COMPLETO:', JSON.stringify(req.body, null, 2));
+  console.log('YAMPI HEADERS:', JSON.stringify(req.headers, null, 2));
+
   try {
     // 0) HMAC Yampi (não bloqueia se header não vier)
     const hmacOk = validateYampiHmac(req);
