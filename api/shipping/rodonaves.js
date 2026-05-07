@@ -507,15 +507,8 @@ async function tryLiveQuote({
     const destinationCityId = extractCityId(city);
     console.log('DESTINATION CITY ID:', destinationCityId);
 
-    // 2. Cadastrar destinatário (não bloqueia se falhar)
-    if (receiverDocument) {
-      await saveCustomerIfNeeded({
-        document: receiverDocument,
-        email: receiverEmail,
-        cityId: destinationCityId,
-        zipCode: destinationZipCode,
-      });
-    }
+    // 2. (REMOVIDO) savecustomer - exige endereço completo que a Yampi não envia
+    //    na cotação. O gera-cotacao funciona só com ReceiverCpfcnp no payload.
 
     // 3. Montar Packs (só com peso, dimensões zeradas)
     const packs = (skus || []).map((sku) => ({
