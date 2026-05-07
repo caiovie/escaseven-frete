@@ -15,7 +15,14 @@ globalThis.__RODONAVES_CACHE__ = CACHE;
 // CONFIGURAÇÕES
 // =========================
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
-const FALLBACK_PRICE_MULTIPLIER = 1.0;
+
+// Multiplicador para aproximar tabela base do valor real cobrado pela Rodonaves.
+// A tabela RM Escadas é apenas o "frete peso" - sem generalidades (ICMS, GRIS,
+// Ad Valorem, SECCAT, pedágio). Baseado em CT-e real (SP→Garça 20kg):
+//   Tabela base: R$ 88,19  |  Real cobrado: R$ 189,42  |  Fator: ~2,15x
+// Usamos 2.0x como aproximação conservadora.
+// IMPORTANTE: ajustar este valor conforme dados reais coletados via n8n.
+const FALLBACK_PRICE_MULTIPLIER = 2.0;
 
 // =========================
 // FALLBACK REGIONAL - BRASIL
