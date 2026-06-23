@@ -1,7 +1,18 @@
 // api/shipping/rodonaves.js
-// v3: SIMPLIFICADO - apenas fallback regional no checkout
-// gera-cotacao foi movida para o n8n (pós-pedido) por causa de instabilidade
-// e bloqueios de IP detectados na infraestrutura da Rodonaves.
+// v4: fallback regional no checkout + PESO CUBADO (fator 200 kg/m³)
+//
+// O QUE MUDOU EM RELAÇÃO À v3:
+//  - Agora o frete é calculado pelo PESO TAXADO = max(peso real, peso cubado),
+//    onde peso cubado = (C x L x A em m³) x 200 kg/m³.
+//    Motivo: em ~279 de 280 SKUs de escada o peso cubado é MAIOR que o real,
+//    ou seja, é a CUBAGEM que define o frete. A v3 usava só o peso real e
+//    subestimava itens grandes (ex.: plataforma 6,8 m = 97 kg reais, mas 353 kg cubados).
+//  - As faixas (weightPrices / maxWeight) passam a ser interpretadas em PESO TAXADO.
+//  - Itens acima de 100 kg deixam de "estourar" a tabela: usam perKgOver100 (R$/kg da
+//    tabela RM Escadas para a distância do estado).
+//
+// A cotação REAL continua sendo feita pós-pedido no n8n (gera-cotacao). Aqui é só a
+// estimativa rápida exibida no checkout da Yampi.
 
 import crypto from 'crypto';
 
@@ -16,7 +27,12 @@ globalThis.__RODONAVES_CACHE__ = CACHE;
 // =========================
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 
-// Multiplicador para aproximar tabela base do valor real cobrado pela Rodonaves.
+// Fator de cubagem do contrato RM Escadas (Rodonaves): 200 kg por m³.
+// (DF/UN 094 usa 300 kg/m³ na tabela; aqui mantemos 200 como regra geral —
+//  ajustar pontualmente se quiser tratar DF à parte.)
+const CUBAGE_FACTOR_KG_M3 = 200;
+
+// Multiplicador para aproximar a tabela base do valor real cobrado pela Rodonaves.
 // A tabela RM Escadas é apenas o "frete peso" - sem generalidades (ICMS, GRIS,
 // Ad Valorem, SECCAT, pedágio). Baseado em CT-e real (SP→Garça 20kg):
 //   Tabela base: R$ 88,19  |  Real cobrado: R$ 189,42  |  Fator: ~2,15x
@@ -25,17 +41,13 @@ const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 const FALLBACK_PRICE_MULTIPLIER = 2.0;
 
 // Buffer adicionado ao prazo de transporte da Rodonaves para refletir o ciclo
-// completo de entrega ao cliente:
-//   - 2-3 dias para EscaSeven separar, emitir NF e agendar coleta
-//   - prazo_pf > prazo_pj (a tabela usa PJ, mas vendemos para PF)
-//   - margem de segurança para fins de semana / atrasos
-// Cliente prefere "promessa cumprida" do que "promessa quebrada".
+// completo de entrega ao cliente (separação, emissão NF, coleta, fins de semana).
 const DELIVERY_DAYS_BUFFER = 3;
 
 // =========================
 // FALLBACK REGIONAL - BRASIL
-// Tabela RM Escadas (Rodonaves) - apenas frete peso (sem generalidades)
-// O n8n calcula o valor real depois do pedido pago via gera-cotacao.
+// Tabela RM Escadas (Rodonaves) - apenas frete peso (sem generalidades).
+// weightPrices = faixas de PESO TAXADO (cubado). perKgOver100 = R$/kg p/ acima de 100 kg.
 // =========================
 const FALLBACK_RULES = [
   // SP
@@ -44,126 +56,126 @@ const FALLBACK_RULES = [
       { maxWeight: 10, price: 54.15 }, { maxWeight: 20, price: 71.16 },
       { maxWeight: 40, price: 88.19 }, { maxWeight: 60, price: 113.74 },
       { maxWeight: 100, price: 139.28 },
-    ]},
+    ], perKgOver100: 1.8684 },
   // MG
   { name: 'Rodonaves', service: 'Normal', startZip: '30000001', endZip: '39997999', days: 2,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
-    ]},
+    ], perKgOver100: 2.2947 },
   // RJ
   { name: 'Rodonaves', service: 'Normal', startZip: '20000001', endZip: '28999999', days: 4,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
-    ]},
+    ], perKgOver100: 2.2947 },
   // ES
   { name: 'Rodonaves', service: 'Normal', startZip: '29000001', endZip: '29999999', days: 5,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
-    ]},
+    ], perKgOver100: 2.6709 },
   // PR
   { name: 'Rodonaves', service: 'Normal', startZip: '80000001', endZip: '87999999', days: 2,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
-    ]},
+    ], perKgOver100: 2.2947 },
   // SC
   { name: 'Rodonaves', service: 'Normal', startZip: '88000001', endZip: '89999999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
-    ]},
+    ], perKgOver100: 2.2947 },
   // RS
   { name: 'Rodonaves', service: 'Normal', startZip: '90000001', endZip: '99999999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
-    ]},
+    ], perKgOver100: 2.6709 },
   // DF
   { name: 'Rodonaves', service: 'Normal', startZip: '70000001', endZip: '72799999', days: 4,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
-    ]},
+    ], perKgOver100: 2.6709 },
   // GO
   { name: 'Rodonaves', service: 'Normal', startZip: '72800001', endZip: '76759999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
-    ]},
+    ], perKgOver100: 2.6709 },
   // MS
   { name: 'Rodonaves', service: 'Normal', startZip: '79000001', endZip: '79999999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
-    ]},
+    ], perKgOver100: 2.6709 },
   // MT
   { name: 'Rodonaves', service: 'Normal', startZip: '78000001', endZip: '78899999', days: 4,
     weightPrices: [
       { maxWeight: 10, price: 147.79 }, { maxWeight: 20, price: 156.30 },
       { maxWeight: 40, price: 190.36 }, { maxWeight: 60, price: 275.49 },
       { maxWeight: 100, price: 284.00 },
-    ]},
+    ], perKgOver100: 3.5737 },
   // TO
   { name: 'Rodonaves', service: 'Normal', startZip: '77000000', endZip: '77999999', days: 6,
     weightPrices: [
       { maxWeight: 10, price: 147.79 }, { maxWeight: 20, price: 156.30 },
       { maxWeight: 40, price: 190.36 }, { maxWeight: 60, price: 275.49 },
       { maxWeight: 100, price: 284.00 },
-    ]},
+    ], perKgOver100: 3.5737 },
   // RO
   { name: 'Rodonaves', service: 'Normal', startZip: '76800001', endZip: '76999999', days: 8,
     weightPrices: [
       { maxWeight: 10, price: 164.82 }, { maxWeight: 20, price: 181.85 },
       { maxWeight: 40, price: 224.40 }, { maxWeight: 60, price: 309.55 },
       { maxWeight: 100, price: 343.59 },
-    ]},
+    ], perKgOver100: 3.9123 },
   // PA
   { name: 'Rodonaves', service: 'Normal', startZip: '66000001', endZip: '68899999', days: 9,
     weightPrices: [
       { maxWeight: 10, price: 164.82 }, { maxWeight: 20, price: 181.85 },
       { maxWeight: 40, price: 224.40 }, { maxWeight: 60, price: 309.55 },
       { maxWeight: 100, price: 343.59 },
-    ]},
+    ], perKgOver100: 3.9123 },
   // AP
   { name: 'Rodonaves', service: 'Normal', startZip: '68900001', endZip: '68999999', days: 13,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
-    ]},
+    ], perKgOver100: 4.2509 },
   // AC
   { name: 'Rodonaves', service: 'Normal', startZip: '69900001', endZip: '69999999', days: 11,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
-    ]},
+    ], perKgOver100: 4.2509 },
   // RR
   { name: 'Rodonaves', service: 'Normal', startZip: '69300001', endZip: '69399999', days: 22,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
-    ]},
+    ], perKgOver100: 4.2509 },
   // AM
   { name: 'Rodonaves', service: 'Normal', startZip: '69000001', endZip: '69899999', days: 11,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
-    ]},
+    ], perKgOver100: 4.2509 },
 ];
 
 const EMERGENCY_FALLBACK = {
@@ -171,8 +183,9 @@ const EMERGENCY_FALLBACK = {
   weightPrices: [
     { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
     { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
-    { maxWeight: 100, price: 377.65 }, { maxWeight: 200, price: 750.00 },
+    { maxWeight: 100, price: 377.65 },
   ],
+  perKgOver100: 4.2509,
 };
 
 // =========================
@@ -195,6 +208,34 @@ function isZipInRange(zip, startZip, endZip) {
   return value >= zipToNumber(startZip) && value <= zipToNumber(endZip);
 }
 
+// Lê a dimensão do SKU em cm, tolerando diferentes nomes de campo da Yampi.
+function dimCm(sku, ...keys) {
+  for (const k of keys) {
+    const v = Number(sku?.[k]);
+    if (v && v > 0) return v;
+  }
+  return 0;
+}
+
+// Peso taxado de UMA unidade do SKU = max(peso real, peso cubado @200).
+function chargeableWeightForSku(sku) {
+  const real = Number(sku?.weight || 0);
+  const length = dimCm(sku, 'length', 'comprimento', 'depth', 'profundidade');
+  const width = dimCm(sku, 'width', 'largura');
+  const height = dimCm(sku, 'height', 'altura');
+  const cubicMeters = (length * width * height) / 1_000_000; // cm³ -> m³
+  const cubedWeight = cubicMeters * CUBAGE_FACTOR_KG_M3;
+  return Math.max(real, cubedWeight);
+}
+
+// Seleciona o preço base pela faixa de peso taxado; acima de 100 kg usa R$/kg.
+function priceForWeight(rule, chargeableWeight) {
+  const bracket = rule.weightPrices.find((item) => chargeableWeight <= item.maxWeight);
+  if (bracket) return bracket.price;
+  if (rule.perKgOver100) return rule.perKgOver100 * chargeableWeight;
+  return null;
+}
+
 function buildYampiQuote({ name, service, price, days, source }) {
   const numericPrice = Number(price || 0);
   const numericDays = Number(days || 0);
@@ -214,24 +255,24 @@ function findFallbackQuote(destinationZipCode, totalWeight) {
     isZipInRange(destinationZipCode, item.startZip, item.endZip)
   );
   if (!rule) return null;
-  const priceRule = rule.weightPrices.find((item) => totalWeight <= item.maxWeight);
-  if (!priceRule) return null;
+  const basePrice = priceForWeight(rule, totalWeight);
+  if (basePrice == null) return null;
   return buildYampiQuote({
     name: rule.name,
     service: rule.service,
-    price: priceRule.price * FALLBACK_PRICE_MULTIPLIER,
+    price: basePrice * FALLBACK_PRICE_MULTIPLIER,
     days: rule.days + DELIVERY_DAYS_BUFFER,
     source: 'rodonaves-fallback',
   });
 }
 
 function findEmergencyQuote(totalWeight) {
-  const priceRule = EMERGENCY_FALLBACK.weightPrices.find((item) => totalWeight <= item.maxWeight);
-  if (!priceRule) return null;
+  const basePrice = priceForWeight(EMERGENCY_FALLBACK, totalWeight);
+  if (basePrice == null) return null;
   return buildYampiQuote({
     name: EMERGENCY_FALLBACK.name,
     service: EMERGENCY_FALLBACK.service,
-    price: priceRule.price * FALLBACK_PRICE_MULTIPLIER,
+    price: basePrice * FALLBACK_PRICE_MULTIPLIER,
     days: EMERGENCY_FALLBACK.days + DELIVERY_DAYS_BUFFER,
     source: 'rodonaves-emergency',
   });
@@ -293,15 +334,21 @@ function getCartDataFromYampi(body) {
   const destinationZipCode = onlyDigits(body?.zipcode);
   const skus = Array.isArray(body?.skus) ? body.skus : [];
 
-  const totalWeight = skus.reduce((sum, sku) => {
-    return sum + Number(sku?.weight || 0) * Number(sku?.quantity || 0);
-  }, 0);
+  // Peso TAXADO total = soma do max(real, cubado) de cada SKU x quantidade.
+  let totalRealWeight = 0;
+  let totalWeight = 0; // peso taxado (o que vai para a tabela)
+  for (const sku of skus) {
+    const qty = Number(sku?.quantity || 0);
+    totalRealWeight += Number(sku?.weight || 0) * qty;
+    totalWeight += chargeableWeightForSku(sku) * qty;
+  }
 
   const totalPackages = skus.reduce((sum, sku) => sum + Number(sku?.quantity || 0), 0);
 
   return {
     destinationZipCode,
-    totalWeight,
+    totalWeight,        // peso taxado (cubado quando maior)
+    totalRealWeight,    // peso real (apenas para log/debug)
     totalPackages,
   };
 }
@@ -313,7 +360,7 @@ export default async function handler(req, res) {
   const startedAt = Date.now();
 
   if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, message: 'API Rodonaves EscaSeven v3 (fallback only)' });
+    return res.status(200).json({ ok: true, message: 'API Rodonaves EscaSeven v4 (fallback + cubagem 200)' });
   }
 
   if (req.method !== 'POST') {
@@ -327,10 +374,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ quotes: [] });
     }
 
-    const { destinationZipCode, totalWeight, totalPackages } = getCartDataFromYampi(req.body);
+    const { destinationZipCode, totalWeight, totalRealWeight, totalPackages } = getCartDataFromYampi(req.body);
 
     console.log('CEP:', destinationZipCode);
-    console.log('PESO:', totalWeight);
+    console.log('PESO REAL:', totalRealWeight);
+    console.log('PESO TAXADO (cubado):', totalWeight);
     console.log('VOLUMES:', totalPackages);
 
     if (!destinationZipCode || destinationZipCode.length !== 8) {
