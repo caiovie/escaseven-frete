@@ -3,6 +3,9 @@
   "functions": {
     "api/shipping/rodonaves.js": {
       "maxDuration": 10
+    },
+    "api/shipping/calculadora.js": {
+      "maxDuration": 10
     }
   }
 }

@@ -1,5 +1,5 @@
 // api/shipping/rodonaves.js
-// v4: fallback regional no checkout + PESO CUBADO (fator 200 kg/m³)
+// v6: FRETE GRATIS na Grande Sao Paulo + fallback regional + PESO CUBADO (fator 200 kg/m³)
 //
 // O QUE MUDOU EM RELAÇÃO À v3:
 //  - Agora o frete é calculado pelo PESO TAXADO = max(peso real, peso cubado),
@@ -43,6 +43,19 @@ const FALLBACK_PRICE_MULTIPLIER = 2.0;
 // Buffer adicionado ao prazo de transporte da Rodonaves para refletir o ciclo
 // completo de entrega ao cliente (separação, emissão NF, coleta, fins de semana).
 const DELIVERY_DAYS_BUFFER = 3;
+
+// =========================
+// >>> GRANDE SAO PAULO = FRETE GRATIS <<<
+// Capital + Regiao Metropolitana (01000-000 a 09999-999).
+// Decisao 16/07/2026 (Betao): Grande SP gratis; interior de SP e demais estados
+// seguem exatamente como estavam. Para desligar o gratis, basta gratis: false.
+// =========================
+const GRANDE_SP = {
+  startZip: '01000000',
+  endZip:   '09999999',
+  gratis: true,
+  days: 2,
+};
 
 // =========================
 // FALLBACK REGIONAL - BRASIL
@@ -250,6 +263,21 @@ function buildYampiQuote({ name, service, price, days, source }) {
   };
 }
 
+// Cotacao de frete gratis (price 0 + free_shipment true).
+// Funcao separada porque buildYampiQuote descarta price <= 0.
+function buildFreeQuote({ days, source }) {
+  const numericDays = Number(days || 0);
+  if (!numericDays || numericDays <= 0) return null;
+  return {
+    name: 'Rodonaves',
+    service: 'Normal',
+    price: 0,
+    days: numericDays,
+    quote_id: (source || 'rodonaves-gratis') + '-' + Date.now(),
+    free_shipment: true,
+  };
+}
+
 function findFallbackQuote(destinationZipCode, totalWeight) {
   const rule = FALLBACK_RULES.find((item) =>
     isZipInRange(destinationZipCode, item.startZip, item.endZip)
@@ -360,7 +388,7 @@ export default async function handler(req, res) {
   const startedAt = Date.now();
 
   if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, message: 'API Rodonaves EscaSeven v4 (fallback + cubagem 200)' });
+    return res.status(200).json({ ok: true, message: 'API Rodonaves EscaSeven v6 (Grande SP gratis + cotacao normal no restante)' });
   }
 
   if (req.method !== 'POST') {
@@ -389,6 +417,23 @@ export default async function handler(req, res) {
     if (!totalWeight || totalWeight <= 0) {
       console.log('Peso inválido');
       return res.status(200).json({ quotes: [] });
+    }
+
+    // =====================================================
+    // 0. GRANDE SAO PAULO = FRETE GRATIS
+    // Vem antes do cache e da tabela. Interior de SP (11xxx+) NAO entra aqui.
+    // =====================================================
+    if (GRANDE_SP.gratis && isZipInRange(destinationZipCode, GRANDE_SP.startZip, GRANDE_SP.endZip)) {
+      const freeQuote = buildFreeQuote({
+        days: GRANDE_SP.days + DELIVERY_DAYS_BUFFER,
+        source: 'rodonaves-grande-sp-gratis',
+      });
+      if (freeQuote) {
+        console.log('FRETE GRATIS (Grande SP):', { days: freeQuote.days });
+        console.log('YAMPI RESPONSE:', JSON.stringify({ quotes: [freeQuote] }));
+        console.log('TOTAL MS:', elapsedMs(startedAt));
+        return res.status(200).json({ quotes: [freeQuote] });
+      }
     }
 
     const quoteKey = buildQuoteKey({ destinationZipCode, totalWeight });

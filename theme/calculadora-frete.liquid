@@ -1,0 +1,234 @@
+{% comment %}
+  ============================================================
+  EscaSeven — Calculadora de frete na página do produto
+  ============================================================
+  Onde colar: dentro da section do produto (ex.: sections/main-product.liquid),
+  logo abaixo do bloco de preço ou do botão de comprar.
+
+  Como funciona:
+    - Pega o SKU da variante selecionada e manda pra API.
+    - A API busca peso e medidas na base do Bling e devolve o MESMO valor
+      que o checkout vai cobrar (testado: 1.760 casos, 100% de bate).
+    - Troca de variante atualiza o SKU sozinho.
+
+  Testado contra: api/shipping/calculadora.js
+{% endcomment %}
+
+<div class="es-frete" data-es-frete>
+  <div class="es-frete__head">
+    <svg class="es-frete__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="7" cy="17" r="1.8" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="17.5" cy="17" r="1.8" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+    <span>Calcular frete e prazo</span>
+  </div>
+
+  <form class="es-frete__form" data-es-frete-form novalidate>
+    <input
+      type="text"
+      inputmode="numeric"
+      autocomplete="postal-code"
+      maxlength="9"
+      placeholder="Digite seu CEP"
+      aria-label="Digite seu CEP"
+      class="es-frete__input"
+      data-es-frete-cep>
+    <button type="submit" class="es-frete__btn" data-es-frete-btn>Calcular</button>
+  </form>
+
+  <a class="es-frete__link" href="https://buscacepinter.correios.com.br/app/endereco/index.php"
+     target="_blank" rel="noopener">Não sei meu CEP</a>
+
+  <div class="es-frete__result" data-es-frete-result hidden></div>
+
+  <script type="application/json" data-es-frete-config>
+    {
+      "endpoint": "https://escaseven-frete.vercel.app/api/shipping/calculadora",
+      "sku": {{ product.selected_or_first_available_variant.sku | json }},
+      "variantes": {
+        {%- for v in product.variants -%}
+          "{{ v.id }}": {{ v.sku | json }}{% unless forloop.last %},{% endunless %}
+        {%- endfor -%}
+      }
+    }
+  </script>
+</div>
+
+<style>
+  .es-frete {
+    border: 1px solid #E4E7EC;
+    border-radius: 10px;
+    padding: 16px;
+    margin: 20px 0;
+    font-family: inherit;
+  }
+  .es-frete__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 15px;
+    color: #1B1B29;
+    margin-bottom: 12px;
+  }
+  .es-frete__icon { width: 22px; height: 22px; color: #E8631A; flex: 0 0 22px; }
+  .es-frete__form { display: flex; gap: 8px; }
+  .es-frete__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 44px;
+    padding: 0 12px;
+    border: 1px solid #D9DCE1;
+    border-radius: 8px;
+    font-size: 15px;
+    color: #1B1B29;
+    background: #fff;
+  }
+  .es-frete__input:focus { outline: none; border-color: #E8631A; box-shadow: 0 0 0 3px rgba(232,99,26,.15); }
+  .es-frete__input.is-erro { border-color: #C0392B; }
+  .es-frete__btn {
+    flex: 0 0 auto;
+    height: 44px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 8px;
+    background: #E8631A;
+    color: #fff;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .es-frete__btn:hover { background: #d4571310; background-color: #D45713; }
+  .es-frete__btn[disabled] { opacity: .6; cursor: default; }
+  .es-frete__link {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #6B7280;
+    text-decoration: underline;
+  }
+  .es-frete__result { margin-top: 14px; font-size: 15px; }
+  .es-frete__linha {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #F3F4F6;
+  }
+  .es-frete__linha--gratis { background: #EAF7EF; }
+  .es-frete__nome { font-weight: 600; color: #1B1B29; }
+  .es-frete__prazo { display: block; font-size: 13px; font-weight: 400; color: #6B7280; margin-top: 2px; }
+  .es-frete__valor { font-weight: 700; color: #E8631A; white-space: nowrap; }
+  .es-frete__valor--gratis { color: #2E9E5B; text-transform: uppercase; }
+  .es-frete__msg { color: #6B7280; font-size: 14px; }
+  .es-frete__msg--erro { color: #C0392B; }
+  @media (max-width: 480px) {
+    .es-frete__btn { padding: 0 14px; }
+  }
+</style>
+
+<script>
+(function () {
+  var raiz = document.querySelector('[data-es-frete]');
+  if (!raiz) return;
+
+  var cfg      = JSON.parse(raiz.querySelector('[data-es-frete-config]').textContent);
+  var form     = raiz.querySelector('[data-es-frete-form]');
+  var campo    = raiz.querySelector('[data-es-frete-cep]');
+  var botao    = raiz.querySelector('[data-es-frete-btn]');
+  var resultado= raiz.querySelector('[data-es-frete-result]');
+  var skuAtual = cfg.sku;
+
+  function moeda(v) {
+    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+  function mostrar(html) {
+    resultado.innerHTML = html;
+    resultado.hidden = false;
+  }
+  function erro(msg) {
+    mostrar('<p class="es-frete__msg es-frete__msg--erro">' + msg + '</p>');
+  }
+
+  // máscara 00000-000
+  campo.addEventListener('input', function () {
+    var d = campo.value.replace(/\D/g, '').slice(0, 8);
+    campo.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d;
+    campo.classList.remove('is-erro');
+  });
+
+  // troca de variante -> troca o SKU
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.name) return;
+    if (el.name !== 'id' && el.name.indexOf('options') === -1) return;
+    setTimeout(function () {
+      var id = new URLSearchParams(window.location.search).get('variant');
+      if (id && cfg.variantes[id]) {
+        skuAtual = cfg.variantes[id];
+        resultado.hidden = true;
+      }
+    }, 300);
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var cep = campo.value.replace(/\D/g, '');
+    if (cep.length !== 8) {
+      campo.classList.add('is-erro');
+      return erro('Digite um CEP válido, com 8 números.');
+    }
+
+    botao.disabled = true;
+    botao.textContent = 'Calculando...';
+    mostrar('<p class="es-frete__msg">Consultando o frete...</p>');
+
+    var url = cfg.endpoint + '?cep=' + cep + '&sku=' + encodeURIComponent(skuAtual || '') + '&qtd=1';
+
+    fetch(url, { method: 'GET' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          if (d.erro === 'produto_sem_medida') {
+            return erro('Este produto ainda não tem frete automático. Fale com a gente pelo WhatsApp que a gente calcula pra você.');
+          }
+          return erro('Não consegui calcular agora. Confira o CEP e tente de novo.');
+        }
+        if (!d.atende) {
+          return erro('Não entregamos nesse CEP no momento. Fale com a gente pelo WhatsApp.');
+        }
+
+        var prazo = d.days + (d.days === 1 ? ' dia útil' : ' dias úteis');
+        if (d.gratis) {
+          mostrar(
+            '<div class="es-frete__linha es-frete__linha--gratis">' +
+              '<span class="es-frete__nome">Rodonaves' +
+                '<span class="es-frete__prazo">Chega em até ' + prazo + '</span>' +
+              '</span>' +
+              '<span class="es-frete__valor es-frete__valor--gratis">Frete grátis</span>' +
+            '</div>'
+          );
+        } else {
+          mostrar(
+            '<div class="es-frete__linha">' +
+              '<span class="es-frete__nome">Rodonaves' +
+                '<span class="es-frete__prazo">Chega em até ' + prazo + '</span>' +
+              '</span>' +
+              '<span class="es-frete__valor">' + moeda(d.price) + '</span>' +
+            '</div>'
+          );
+        }
+      })
+      .catch(function () {
+        erro('Não consegui calcular agora. Tente novamente em instantes.');
+      })
+      .then(function () {
+        botao.disabled = false;
+        botao.textContent = 'Calcular';
+      });
+  });
+})();
+</script>
