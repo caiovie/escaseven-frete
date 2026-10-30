@@ -20,6 +20,22 @@ export const GRANDE_SP = {
   days: 2,
 };
 
+// O Alto Tiete fica dentro da faixa ampla da Grande SP, mas passa a ter
+// cobranca normal. Guarulhos permanece gratis por nao fazer parte da lista
+// classica de 10 municipios do Alto Tiete adotada nesta regra de negocio.
+export const ALTO_TIETE_EXCLUSOES = [
+  { name: 'Aruja', startZip: '07400000', endZip: '07499999' },
+  { name: 'Santa Isabel', startZip: '07500000', endZip: '07599999' },
+  { name: 'Ferraz de Vasconcelos', startZip: '08500000', endZip: '08549999' },
+  { name: 'Poa', startZip: '08550000', endZip: '08569999' },
+  { name: 'Itaquaquecetuba', startZip: '08570000', endZip: '08599999' },
+  { name: 'Suzano', startZip: '08600000', endZip: '08699999' },
+  { name: 'Mogi das Cruzes', startZip: '08700000', endZip: '08899999' },
+  { name: 'Guararema', startZip: '08900000', endZip: '08999999' },
+  { name: 'Biritiba Mirim', startZip: '08940000', endZip: '08940970' },
+  { name: 'Salesopolis', startZip: '08970000', endZip: '08970999' },
+];
+
 export const FALLBACK_RULES = [
   { uf: 'SP', startZip: '01000000', endZip: '19999999', days: 2,
     weightPrices: [ { maxWeight: 10, price: 54.15 }, { maxWeight: 20, price: 71.16 }, { maxWeight: 40, price: 88.19 }, { maxWeight: 60, price: 113.74 }, { maxWeight: 100, price: 139.28 } ], perKgOver100: 1.8684 },
@@ -69,6 +85,15 @@ export function isZipInRange(zip, startZip, endZip) {
   return v >= zipToNumber(startZip) && v <= zipToNumber(endZip);
 }
 
+export function isGrandeSpGratis(zip) {
+  if (!GRANDE_SP.gratis || !isZipInRange(zip, GRANDE_SP.startZip, GRANDE_SP.endZip)) {
+    return false;
+  }
+  return !ALTO_TIETE_EXCLUSOES.some((range) =>
+    isZipInRange(zip, range.startZip, range.endZip)
+  );
+}
+
 // Peso taxado de UMA unidade = max(peso real, peso cubado @200)
 export function chargeableWeight({ weight = 0, height = 0, width = 0, length = 0 }) {
   const real = Number(weight) || 0;
@@ -113,7 +138,7 @@ export function cotar(zip, chargeable) {
   if (!cep || cep.length !== 8) return { atende: false, motivo: 'cep_invalido' };
   if (!chargeable || chargeable <= 0) return { atende: false, motivo: 'peso_invalido' };
 
-  if (GRANDE_SP.gratis && isZipInRange(cep, GRANDE_SP.startZip, GRANDE_SP.endZip)) {
+  if (isGrandeSpGratis(cep)) {
     return { atende: true, gratis: true, price: 0, days: GRANDE_SP.days + DELIVERY_DAYS_BUFFER, uf: 'SP' };
   }
 

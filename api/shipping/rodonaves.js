@@ -57,6 +57,22 @@ const GRANDE_SP = {
   days: 2,
 };
 
+// O Alto Tiete fica dentro da faixa ampla da Grande SP, mas passa a ter
+// cobranca normal. Guarulhos permanece gratis por nao fazer parte da lista
+// classica de 10 municipios do Alto Tiete adotada nesta regra de negocio.
+const ALTO_TIETE_EXCLUSOES = [
+  { name: 'Aruja', startZip: '07400000', endZip: '07499999' },
+  { name: 'Santa Isabel', startZip: '07500000', endZip: '07599999' },
+  { name: 'Ferraz de Vasconcelos', startZip: '08500000', endZip: '08549999' },
+  { name: 'Poa', startZip: '08550000', endZip: '08569999' },
+  { name: 'Itaquaquecetuba', startZip: '08570000', endZip: '08599999' },
+  { name: 'Suzano', startZip: '08600000', endZip: '08699999' },
+  { name: 'Mogi das Cruzes', startZip: '08700000', endZip: '08899999' },
+  { name: 'Guararema', startZip: '08900000', endZip: '08999999' },
+  { name: 'Biritiba Mirim', startZip: '08940000', endZip: '08940970' },
+  { name: 'Salesopolis', startZip: '08970000', endZip: '08970999' },
+];
+
 // =========================
 // FALLBACK REGIONAL - BRASIL
 // Tabela RM Escadas (Rodonaves) - apenas frete peso (sem generalidades).
@@ -219,6 +235,15 @@ function zipToNumber(zip) {
 function isZipInRange(zip, startZip, endZip) {
   const value = zipToNumber(zip);
   return value >= zipToNumber(startZip) && value <= zipToNumber(endZip);
+}
+
+function isGrandeSpGratis(zip) {
+  if (!GRANDE_SP.gratis || !isZipInRange(zip, GRANDE_SP.startZip, GRANDE_SP.endZip)) {
+    return false;
+  }
+  return !ALTO_TIETE_EXCLUSOES.some((range) =>
+    isZipInRange(zip, range.startZip, range.endZip)
+  );
 }
 
 // Lê a dimensão do SKU em cm, tolerando diferentes nomes de campo da Yampi.
@@ -423,7 +448,7 @@ export default async function handler(req, res) {
     // 0. GRANDE SAO PAULO = FRETE GRATIS
     // Vem antes do cache e da tabela. Interior de SP (11xxx+) NAO entra aqui.
     // =====================================================
-    if (GRANDE_SP.gratis && isZipInRange(destinationZipCode, GRANDE_SP.startZip, GRANDE_SP.endZip)) {
+    if (isGrandeSpGratis(destinationZipCode)) {
       const freeQuote = buildFreeQuote({
         days: GRANDE_SP.days + DELIVERY_DAYS_BUFFER,
         source: 'rodonaves-grande-sp-gratis',

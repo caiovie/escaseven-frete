@@ -9,8 +9,13 @@ Rodando em: `https://escaseven-frete.vercel.app` (região `gru1`, São Paulo).
 
 ## A regra de negócio, em uma frase
 
-**Capital e Grande São Paulo (CEP 01000-000 a 09999-999) têm frete grátis. O resto
-do Brasil é cotado pela tabela da Rodonaves.**
+**Capital e Grande São Paulo (CEP 01000-000 a 09999-999) têm frete grátis, com
+exceção das 10 cidades do Alto Tietê. O resto do Brasil é cotado pela tabela da
+Rodonaves.**
+
+As exceções cobradas são: Arujá, Santa Isabel, Ferraz de Vasconcelos, Poá,
+Itaquaquecetuba, Suzano, Mogi das Cruzes, Guararema, Biritiba Mirim e Salesópolis.
+Guarulhos permanece grátis nesta versão.
 
 Decisão do Betão em 16/07/2026. Interior de SP (11xxx em diante) **cobra normal** —
 uma entrega em Ribeirão Preto custa ~R$ 167 reais pra loja, não dá pra absorver.
@@ -79,7 +84,7 @@ dá cubado 35,496 kg. O log de produção da Yampi mostrou exatamente `PESO TAXA
    Cubado = (altura × largura × comprimento em m³) × **200 kg/m³**
    (fator do contrato RM Escadas / Rodonaves).
 
-2. **Grande SP?** → grátis, acabou.
+2. **Grande SP fora do Alto Tietê?** → grátis, acabou.
 
 3. **Senão** → acha a faixa de CEP na `FALLBACK_RULES`, pega o preço da faixa de
    peso e multiplica por **2,0**.

@@ -3,6 +3,7 @@
 import { cotar, chargeableWeight, skuData } from '../api/shipping/_engine.js';
 import DIMS from '../api/shipping/_dimensoes.js';
 import fs from 'fs';
+import assert from 'node:assert/strict';
 
 // carrega o handler do checkout
 const src = fs.readFileSync(new URL('../api/shipping/rodonaves.js', import.meta.url), 'utf8')
@@ -52,3 +53,24 @@ if (divergencias.length === 0) {
   console.table(divergencias.slice(0, 15));
   process.exit(1);
 }
+
+// Regra de negocio: o Alto Tiete deve cobrar frete, enquanto a capital,
+// Grande SP fora da excecao e Guarulhos continuam gratis.
+const regraFrete = [
+  { cep: '01310100', gratis: true, nome: 'Sao Paulo' },
+  { cep: '07115000', gratis: true, nome: 'Guarulhos' },
+  { cep: '08740060', gratis: false, nome: 'Mogi das Cruzes' },
+  { cep: '08674000', gratis: false, nome: 'Suzano' },
+  { cep: '08550000', gratis: false, nome: 'Poa' },
+  { cep: '08570000', gratis: false, nome: 'Itaquaquecetuba' },
+  { cep: '10000000', gratis: false, nome: 'Interior de SP' },
+];
+
+const testeSku = '8US5V7PPR';
+const testeDimensao = skuData(testeSku);
+const testePesoTaxado = chargeableWeight(testeDimensao);
+for (const caso of regraFrete) {
+  const resultado = cotar(caso.cep, testePesoTaxado);
+  assert.equal(resultado.gratis, caso.gratis, `${caso.nome} (${caso.cep})`);
+}
+console.log('REGRA ALTO TIETE: excecoes cobradas e demais casos esperados confirmados.');
