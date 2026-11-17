@@ -80,126 +80,126 @@ const ALTO_TIETE_EXCLUSOES = [
 // =========================
 const FALLBACK_RULES = [
   // SP
-  { name: 'Rodonaves', service: 'Normal', startZip: '01000000', endZip: '19999999', days: 2,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '01000000', endZip: '19999999', days: 2,
     weightPrices: [
       { maxWeight: 10, price: 54.15 }, { maxWeight: 20, price: 71.16 },
       { maxWeight: 40, price: 88.19 }, { maxWeight: 60, price: 113.74 },
       { maxWeight: 100, price: 139.28 },
     ], perKgOver100: 1.8684 },
   // MG
-  { name: 'Rodonaves', service: 'Normal', startZip: '30000001', endZip: '39997999', days: 2,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '30000001', endZip: '39997999', days: 2,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
     ], perKgOver100: 2.2947 },
   // RJ
-  { name: 'Rodonaves', service: 'Normal', startZip: '20000001', endZip: '28999999', days: 4,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '20000001', endZip: '28999999', days: 4,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
     ], perKgOver100: 2.2947 },
   // ES
-  { name: 'Rodonaves', service: 'Normal', startZip: '29000001', endZip: '29999999', days: 5,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '29000001', endZip: '29999999', days: 5,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
     ], perKgOver100: 2.6709 },
   // PR
-  { name: 'Rodonaves', service: 'Normal', startZip: '80000001', endZip: '87999999', days: 2,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '80000001', endZip: '87999999', days: 2,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
     ], perKgOver100: 2.2947 },
   // SC
-  { name: 'Rodonaves', service: 'Normal', startZip: '88000001', endZip: '89999999', days: 3,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '88000001', endZip: '89999999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 },
       { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 },
       { maxWeight: 100, price: 190.35 },
     ], perKgOver100: 2.2947 },
   // RS
-  { name: 'Rodonaves', service: 'Normal', startZip: '90000001', endZip: '99999999', days: 3,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '90000001', endZip: '99999999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
     ], perKgOver100: 2.6709 },
   // DF
-  { name: 'Rodonaves', service: 'Normal', startZip: '70000001', endZip: '72799999', days: 4,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '70000001', endZip: '72799999', days: 4,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
     ], perKgOver100: 2.6709 },
   // GO
-  { name: 'Rodonaves', service: 'Normal', startZip: '72800001', endZip: '76759999', days: 3,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '72800001', endZip: '76759999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
     ], perKgOver100: 2.6709 },
   // MS
-  { name: 'Rodonaves', service: 'Normal', startZip: '79000001', endZip: '79999999', days: 3,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '79000001', endZip: '79999999', days: 3,
     weightPrices: [
       { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 },
       { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 },
       { maxWeight: 100, price: 224.40 },
     ], perKgOver100: 2.6709 },
   // MT
-  { name: 'Rodonaves', service: 'Normal', startZip: '78000001', endZip: '78899999', days: 4,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '78000001', endZip: '78899999', days: 4,
     weightPrices: [
       { maxWeight: 10, price: 147.79 }, { maxWeight: 20, price: 156.30 },
       { maxWeight: 40, price: 190.36 }, { maxWeight: 60, price: 275.49 },
       { maxWeight: 100, price: 284.00 },
     ], perKgOver100: 3.5737 },
   // TO
-  { name: 'Rodonaves', service: 'Normal', startZip: '77000000', endZip: '77999999', days: 6,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '77000000', endZip: '77999999', days: 6,
     weightPrices: [
       { maxWeight: 10, price: 147.79 }, { maxWeight: 20, price: 156.30 },
       { maxWeight: 40, price: 190.36 }, { maxWeight: 60, price: 275.49 },
       { maxWeight: 100, price: 284.00 },
     ], perKgOver100: 3.5737 },
   // RO
-  { name: 'Rodonaves', service: 'Normal', startZip: '76800001', endZip: '76999999', days: 8,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '76800001', endZip: '76999999', days: 8,
     weightPrices: [
       { maxWeight: 10, price: 164.82 }, { maxWeight: 20, price: 181.85 },
       { maxWeight: 40, price: 224.40 }, { maxWeight: 60, price: 309.55 },
       { maxWeight: 100, price: 343.59 },
     ], perKgOver100: 3.9123 },
   // PA
-  { name: 'Rodonaves', service: 'Normal', startZip: '66000001', endZip: '68899999', days: 9,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '66000001', endZip: '68899999', days: 9,
     weightPrices: [
       { maxWeight: 10, price: 164.82 }, { maxWeight: 20, price: 181.85 },
       { maxWeight: 40, price: 224.40 }, { maxWeight: 60, price: 309.55 },
       { maxWeight: 100, price: 343.59 },
     ], perKgOver100: 3.9123 },
   // AP
-  { name: 'Rodonaves', service: 'Normal', startZip: '68900001', endZip: '68999999', days: 13,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '68900001', endZip: '68999999', days: 13,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
     ], perKgOver100: 4.2509 },
   // AC
-  { name: 'Rodonaves', service: 'Normal', startZip: '69900001', endZip: '69999999', days: 11,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '69900001', endZip: '69999999', days: 11,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
     ], perKgOver100: 4.2509 },
   // RR
-  { name: 'Rodonaves', service: 'Normal', startZip: '69300001', endZip: '69399999', days: 22,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '69300001', endZip: '69399999', days: 22,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
       { maxWeight: 100, price: 377.65 },
     ], perKgOver100: 4.2509 },
   // AM
-  { name: 'Rodonaves', service: 'Normal', startZip: '69000001', endZip: '69899999', days: 11,
+  { name: 'Frete Escaseven', service: 'Normal', startZip: '69000001', endZip: '69899999', days: 11,
     weightPrices: [
       { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
       { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
@@ -208,7 +208,7 @@ const FALLBACK_RULES = [
 ];
 
 const EMERGENCY_FALLBACK = {
-  name: 'Rodonaves', service: 'Normal', days: 15,
+  name: 'Frete Escaseven', service: 'Normal', days: 15,
   weightPrices: [
     { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 },
     { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 },
@@ -294,7 +294,7 @@ function buildFreeQuote({ days, source }) {
   const numericDays = Number(days || 0);
   if (!numericDays || numericDays <= 0) return null;
   return {
-    name: 'Rodonaves',
+    name: 'Frete Escaseven',
     service: 'Normal',
     price: 0,
     days: numericDays,
