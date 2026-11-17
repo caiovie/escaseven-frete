@@ -35,6 +35,8 @@ const ZONAS_GRATIS = [
 
 const SP_ESTADO = { startZip: '01000000', endZip: '19999999', days: 2 };
 
+// R$ 50 = Sudeste (fora SP) + Sul. Centro-Oeste/Norte/Nordeste = sem frete
+// online (WhatsApp): basta nao estarem nesta lista (caem no return vazio final).
 const ESTADOS_ATENDIDOS = [
   { uf: 'MG', startZip: '30000000', endZip: '39999999', days: 2 },
   { uf: 'RJ', startZip: '20000000', endZip: '28999999', days: 4 },
@@ -42,17 +44,6 @@ const ESTADOS_ATENDIDOS = [
   { uf: 'PR', startZip: '80000000', endZip: '87999999', days: 2 },
   { uf: 'SC', startZip: '88000000', endZip: '89999999', days: 3 },
   { uf: 'RS', startZip: '90000000', endZip: '99999999', days: 3 },
-  { uf: 'DF', startZip: '70000000', endZip: '72799999', days: 4 },
-  { uf: 'GO', startZip: '72800000', endZip: '76799999', days: 3 },
-  { uf: 'MT', startZip: '78000000', endZip: '78899999', days: 4 },
-  { uf: 'MS', startZip: '79000000', endZip: '79999999', days: 3 },
-  { uf: 'TO', startZip: '77000000', endZip: '77999999', days: 6 },
-  { uf: 'RO', startZip: '76800000', endZip: '76999999', days: 8 },
-  { uf: 'PA', startZip: '66000000', endZip: '68899999', days: 9 },
-  { uf: 'AP', startZip: '68900000', endZip: '68999999', days: 13 },
-  { uf: 'RR', startZip: '69300000', endZip: '69399999', days: 22 },
-  { uf: 'AM', startZip: '69000000', endZip: '69899999', days: 11 },
-  { uf: 'AC', startZip: '69900000', endZip: '69999999', days: 11 },
 ];
 
 // =========================

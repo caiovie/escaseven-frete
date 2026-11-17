@@ -201,6 +201,9 @@
           if (d.motivo === 'consultar_whatsapp') {
             return erro('Esse produto é grande e o frete é calculado sob medida. Fale com a gente pelo WhatsApp que calculamos pra você.');
           }
+          if (d.motivo === 'regiao_cotar') {
+            return erro('Para a sua região o frete é calculado sob medida. Fale com a gente pelo WhatsApp que calculamos pra você.');
+          }
           return erro('Não entregamos nesse CEP no momento. Fale com a gente pelo WhatsApp.');
         }
 

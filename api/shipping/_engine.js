@@ -46,27 +46,16 @@ export const ZONAS_GRATIS = [
 // SP estado inteiro (01xxx a 19xxx). O que nao for gratis aqui = R$ 30.
 export const SP_ESTADO = { startZip: '01000000', endZip: '19999999', days: 2 };
 
-// Demais estados atendidos pela Rodonaves saindo de SP (prazo em dias uteis).
-// Faixas comecam em ...0000 (corrige o bug do 1o CEP de cada faixa cair fora).
-// ORDEM IMPORTA: RR (subfaixa) vem antes de AM.
-export const ESTADOS_ATENDIDOS = [
+// Estados com frete fixo R$ 50 = Sudeste (fora SP) + Sul, que a Rodonaves atende
+// de perto. Centro-Oeste, Norte e Nordeste NAO entram: frete sob consulta no
+// WhatsApp (custo real alto demais para um fixo baixo). Faixas em ...0000.
+export const ESTADOS_R50 = [
   { uf: 'MG', startZip: '30000000', endZip: '39999999', days: 2 },
   { uf: 'RJ', startZip: '20000000', endZip: '28999999', days: 4 },
   { uf: 'ES', startZip: '29000000', endZip: '29999999', days: 5 },
   { uf: 'PR', startZip: '80000000', endZip: '87999999', days: 2 },
   { uf: 'SC', startZip: '88000000', endZip: '89999999', days: 3 },
   { uf: 'RS', startZip: '90000000', endZip: '99999999', days: 3 },
-  { uf: 'DF', startZip: '70000000', endZip: '72799999', days: 4 },
-  { uf: 'GO', startZip: '72800000', endZip: '76799999', days: 3 },
-  { uf: 'MT', startZip: '78000000', endZip: '78899999', days: 4 },
-  { uf: 'MS', startZip: '79000000', endZip: '79999999', days: 3 },
-  { uf: 'TO', startZip: '77000000', endZip: '77999999', days: 6 },
-  { uf: 'RO', startZip: '76800000', endZip: '76999999', days: 8 },
-  { uf: 'PA', startZip: '66000000', endZip: '68899999', days: 9 },
-  { uf: 'AP', startZip: '68900000', endZip: '68999999', days: 13 },
-  { uf: 'RR', startZip: '69300000', endZip: '69399999', days: 22 },
-  { uf: 'AM', startZip: '69000000', endZip: '69899999', days: 11 },
-  { uf: 'AC', startZip: '69900000', endZip: '69999999', days: 11 },
 ];
 
 // =========================================================
@@ -120,12 +109,12 @@ export function cotar(zip, chargeable) {
     return { atende: true, gratis: false, price: FRETE_SP, days: SP_ESTADO.days + DELIVERY_DAYS_BUFFER, zona: 'sp', uf: 'SP' };
   }
 
-  // 4) Demais estados atendidos = R$ 50.
-  const est = ESTADOS_ATENDIDOS.find((e) => isZipInRange(cep, e.startZip, e.endZip));
+  // 4) Sudeste (fora SP) + Sul = R$ 50.
+  const est = ESTADOS_R50.find((e) => isZipInRange(cep, e.startZip, e.endZip));
   if (est) {
     return { atende: true, gratis: false, price: FRETE_OUTROS, days: est.days + DELIVERY_DAYS_BUFFER, zona: 'br', uf: est.uf };
   }
 
-  // 5) Fora da area atendida pela Rodonaves (ex.: Nordeste saindo de SP).
-  return { atende: false, motivo: 'regiao_nao_atendida' };
+  // 5) Centro-Oeste, Norte e Nordeste = frete sob consulta no WhatsApp.
+  return { atende: false, motivo: 'regiao_cotar' };
 }

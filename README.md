@@ -18,12 +18,14 @@ acima do teto) ou região não atendida = **"fale no WhatsApp"**.
   Guarulhos e região `07000-07399`; ABC Paulista `09xxx`.
 - **R$ 30**: qualquer outro CEP de SP (`01000-000`–`19999-999`) — inclui interior,
   Alto Tietê (`07400-07999`, `08500-08999`) e Mogi das Cruzes.
-- **R$ 50**: MG, RJ, ES, PR, SC, RS, DF, GO, MS, MT, TO, RO, PA, AP, AM, RR, AC.
-- **WhatsApp**: peso taxado (cubado@300) acima de **`TETO_PESO_KG`** (hoje 80 kg) —
-  plataformas e escadas gigantes —, ou CEP fora da área atendida (ex.: Nordeste).
+- **R$ 50**: Sudeste (fora SP) + Sul — MG, RJ, ES, PR, SC, RS.
+- **WhatsApp (frete sob consulta)**: peso taxado (cubado@300) acima de
+  **`TETO_PESO_KG`** (hoje 80 kg) — plataformas/escadas gigantes —, **ou**
+  Centro-Oeste, Norte e Nordeste (custo real alto demais para um fixo baixo).
 
 Os valores, o teto e as faixas ficam no topo do `_engine.js`/`rodonaves.js` (constantes
-`FRETE_SP`, `FRETE_OUTROS`, `TETO_PESO_KG`, `ZONAS_GRATIS`, `ESTADOS_ATENDIDOS`).
+`FRETE_SP`, `FRETE_OUTROS`, `TETO_PESO_KG`, `ZONAS_GRATIS`, `ESTADOS_R50`). Para dar
+R$ 50 a mais um estado, é só adicioná-lo em `ESTADOS_R50`.
 Trocar é mudar o número **nos dois arquivos** (o teste de consistência garante que batem).
 
 ---
@@ -93,9 +95,9 @@ dá cubado 35,496 kg. O log de produção da Yampi mostrou exatamente `PESO TAXA
 
 3. **CEP de SP** (não grátis)? → **R$ 30**.
 
-4. **Estado atendido pela Rodonaves?** → **R$ 50**.
+4. **Sudeste (fora SP) ou Sul** (MG, RJ, ES, PR, SC, RS)? → **R$ 50**.
 
-5. **Senão** (fora da área atendida) → **"fale no WhatsApp"**.
+5. **Senão** (Centro-Oeste, Norte, Nordeste) → **"fale no WhatsApp"** (sob consulta).
 
 > Modelo anterior (tabela RM Escadas por faixa de peso × distância, com multiplicador
 > 2,0x) foi substituído por este frete fixo por região em nov/2026. O cálculo por
@@ -153,10 +155,10 @@ No modelo flat, CEP fora da lista de estados atendidos responde
 **2. (Resolvido) Faixas de CEP agora começam em `...0000`.**
 Rio Branco (69900-000) e os primeiros CEPs de cada estado deixaram de escapar.
 
-**2b. Frete fixo a estados distantes pode dar prejuízo.**
-Um item leve a AM/RR/PA sai por R$ 50, mas o custo real da Rodonaves é bem maior —
-quem protege é o teto de peso (só pega item grande), não a distância. Se for um
-problema, dá pra subir o valor desses estados ou mandá-los para o WhatsApp.
+**2b. (Resolvido) Estados distantes não têm mais fixo baixo.**
+Centro-Oeste, Norte e Nordeste vão para o WhatsApp (frete sob consulta), porque o
+custo real é alto demais para um fixo de R$ 50 mesmo em item leve. Só Sudeste+Sul
+têm o fixo. Para dar fixo a mais um estado, inclua-o em `ESTADOS_R50`.
 
 **3. Tabela duplicada.**
 `rodonaves.js` tem a própria cópia das tabelas em vez de importar do `_engine.js`.

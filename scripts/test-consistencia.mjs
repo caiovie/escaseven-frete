@@ -97,4 +97,10 @@ const pesado = chargeableWeight(skuData('PLAT300L')); // ~295 kg taxado, acima d
 assert.equal(cotar('13140605', pesado).motivo, 'consultar_whatsapp', 'Item grande interior SP -> WhatsApp');
 assert.equal(cotar('30140071', pesado).motivo, 'consultar_whatsapp', 'Item grande MG -> WhatsApp');
 assert.equal(cotar('01310100', pesado).gratis, true, 'Item grande SP Capital -> gratis (entrega propria)');
-console.log('MODELO FLAT: valores fixos por regiao (30/50), zona gratis e teto de peso confirmados.');
+// Regioes distantes (Centro-Oeste / Norte / Nordeste): sob consulta no WhatsApp,
+// mesmo com item leve (abaixo do teto).
+assert.equal(cotar('74003010', testePesoTaxado).motivo, 'regiao_cotar', 'GO leve -> WhatsApp');
+assert.equal(cotar('69005000', testePesoTaxado).motivo, 'regiao_cotar', 'AM leve -> WhatsApp');
+assert.equal(cotar('40010000', testePesoTaxado).motivo, 'regiao_cotar', 'BA Nordeste -> WhatsApp');
+
+console.log('MODELO FLAT: fixos por regiao (SP 30 / Sudeste+Sul 50), zona gratis, teto e distantes no WhatsApp confirmados.');
