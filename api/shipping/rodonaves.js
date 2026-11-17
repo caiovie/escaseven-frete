@@ -27,10 +27,11 @@ globalThis.__RODONAVES_CACHE__ = CACHE;
 // =========================
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 
-// Fator de cubagem do contrato RM Escadas (Rodonaves): 200 kg por m³.
-// (DF/UN 094 usa 300 kg/m³ na tabela; aqui mantemos 200 como regra geral —
-//  ajustar pontualmente se quiser tratar DF à parte.)
-const CUBAGE_FACTOR_KG_M3 = 200;
+// Fator de cubagem do contrato RM Escadas (Rodonaves): 300 kg por m³.
+// (É o fator oficial da tabela — "Cubagem: ... na proporção de 300 kg/m³".
+//  DF/UN 094 também usa 300. Antes usávamos 200 como aproximação; alinhado
+//  ao contrato em nov/2026.)
+const CUBAGE_FACTOR_KG_M3 = 300;
 
 // Multiplicador para aproximar a tabela base do valor real cobrado pela Rodonaves.
 // A tabela RM Escadas é apenas o "frete peso" - sem generalidades (ICMS, GRIS,

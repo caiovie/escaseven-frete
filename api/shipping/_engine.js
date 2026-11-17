@@ -8,7 +8,7 @@
 
 import DIMENSOES from './_dimensoes.js';
 
-export const CUBAGE_FACTOR_KG_M3 = 200;
+export const CUBAGE_FACTOR_KG_M3 = 300;
 export const FALLBACK_PRICE_MULTIPLIER = 2.0;
 export const DELIVERY_DAYS_BUFFER = 3;
 
