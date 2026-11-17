@@ -2,77 +2,60 @@
 // Motor de frete compartilhado (mesmas regras do checkout).
 // Prefixo _ faz a Vercel NAO tratar este arquivo como rota.
 //
-// Fonte da verdade das regras usadas pela calculadora da pagina do produto.
-// Precisa ficar igual ao api/shipping/rodonaves.js (v6). Ha um teste de
-// consistencia que compara os dois: scripts/test-consistencia.mjs
+// MODELO (nov/2026): FRETE FIXO POR REGIAO.
+//   - Grande SP (Capital + Osasco + Guarulhos + ABC) = GRATIS.
+//   - Alto Tiete e Mogi das Cruzes = cobram (ficam na faixa de SP).
+//   - Resto de SP (interior + Alto Tiete/Mogi) = R$ 30 fixo.
+//   - Demais estados atendidos pela Rodonaves = R$ 50 fixo.
+//   - Item muito grande/pesado (peso taxado acima do teto) = cotar no WhatsApp.
+//   - Regiao fora da area atendida (ex.: Nordeste saindo de SP) = cotar no WhatsApp.
+//
+// Precisa ficar IGUAL ao api/shipping/rodonaves.js. Ha um teste de consistencia
+// que compara os dois: scripts/test-consistencia.mjs
 
 import DIMENSOES from './_dimensoes.js';
 
-export const CUBAGE_FACTOR_KG_M3 = 200;
-export const FALLBACK_PRICE_MULTIPLIER = 2.0;
+// Fator de cubagem do contrato RM Escadas (Rodonaves): 300 kg/m3 (oficial da tabela).
+// Usado so para o TETO (decidir se o item e grande demais para o frete fixo).
+export const CUBAGE_FACTOR_KG_M3 = 300;
+
+// Buffer de dias somado ao prazo de transporte (separacao, NF, coleta, fins de semana).
 export const DELIVERY_DAYS_BUFFER = 3;
 
-// Capital + Regiao Metropolitana de SP = FRETE GRATIS
-export const GRANDE_SP = {
-  startZip: '01000000',
-  endZip:   '09999999',
-  gratis: true,
-  days: 2,
-};
+// Peso TAXADO (cubado) acima do qual o item nao recebe frete fixo: cota no WhatsApp.
+// Protege a loja de vender uma plataforma/escada gigante por R$ 30-50.
+export const TETO_PESO_KG = 80;
 
-// O Alto Tiete fica dentro da faixa ampla da Grande SP, mas passa a ter
-// cobranca normal. Guarulhos permanece gratis por nao fazer parte da lista
-// classica de 10 municipios do Alto Tiete adotada nesta regra de negocio.
-export const ALTO_TIETE_EXCLUSOES = [
-  { name: 'Aruja', startZip: '07400000', endZip: '07499999' },
-  { name: 'Santa Isabel', startZip: '07500000', endZip: '07599999' },
-  { name: 'Ferraz de Vasconcelos', startZip: '08500000', endZip: '08549999' },
-  { name: 'Poa', startZip: '08550000', endZip: '08569999' },
-  { name: 'Itaquaquecetuba', startZip: '08570000', endZip: '08599999' },
-  { name: 'Suzano', startZip: '08600000', endZip: '08699999' },
-  { name: 'Mogi das Cruzes', startZip: '08700000', endZip: '08899999' },
-  { name: 'Guararema', startZip: '08900000', endZip: '08999999' },
-  { name: 'Biritiba Mirim', startZip: '08940000', endZip: '08940970' },
-  { name: 'Salesopolis', startZip: '08970000', endZip: '08970999' },
+// Valores fixos de frete (R$ inteiros).
+export const FRETE_SP = 30;      // interior de SP + Alto Tiete / Mogi das Cruzes
+export const FRETE_OUTROS = 50;  // demais estados atendidos pela Rodonaves
+
+// ───────────────────────────────────────────────
+// ZONA GRATIS — SP Capital + Osasco + Guarulhos + ABC
+// (Alto Tiete e Mogi NAO entram: caem na faixa de SP que cobra.)
+// ───────────────────────────────────────────────
+export const GRATIS_DAYS = 2;
+export const ZONAS_GRATIS = [
+  { nome: 'SP Capital',          startZip: '01000000', endZip: '05999999' },
+  { nome: 'Osasco e regiao',     startZip: '06000000', endZip: '06999999' },
+  { nome: 'Guarulhos e regiao',  startZip: '07000000', endZip: '07399999' },
+  { nome: 'SP Capital (Z.Leste)',startZip: '08000000', endZip: '08499999' },
+  { nome: 'ABC Paulista',        startZip: '09000000', endZip: '09999999' },
 ];
 
-export const FALLBACK_RULES = [
-  { uf: 'SP', startZip: '01000000', endZip: '19999999', days: 2,
-    weightPrices: [ { maxWeight: 10, price: 54.15 }, { maxWeight: 20, price: 71.16 }, { maxWeight: 40, price: 88.19 }, { maxWeight: 60, price: 113.74 }, { maxWeight: 100, price: 139.28 } ], perKgOver100: 1.8684 },
-  { uf: 'MG', startZip: '30000001', endZip: '39997999', days: 2,
-    weightPrices: [ { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 }, { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 }, { maxWeight: 100, price: 190.35 } ], perKgOver100: 2.2947 },
-  { uf: 'RJ', startZip: '20000001', endZip: '28999999', days: 4,
-    weightPrices: [ { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 }, { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 }, { maxWeight: 100, price: 190.35 } ], perKgOver100: 2.2947 },
-  { uf: 'ES', startZip: '29000001', endZip: '29999999', days: 5,
-    weightPrices: [ { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 }, { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 }, { maxWeight: 100, price: 224.40 } ], perKgOver100: 2.6709 },
-  { uf: 'PR', startZip: '80000001', endZip: '87999999', days: 2,
-    weightPrices: [ { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 }, { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 }, { maxWeight: 100, price: 190.35 } ], perKgOver100: 2.2947 },
-  { uf: 'SC', startZip: '88000001', endZip: '89999999', days: 3,
-    weightPrices: [ { maxWeight: 10, price: 74.57 }, { maxWeight: 20, price: 105.22 }, { maxWeight: 40, price: 122.25 }, { maxWeight: 60, price: 147.79 }, { maxWeight: 100, price: 190.35 } ], perKgOver100: 2.2947 },
-  { uf: 'RS', startZip: '90000001', endZip: '99999999', days: 3,
-    weightPrices: [ { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 }, { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 }, { maxWeight: 100, price: 224.40 } ], perKgOver100: 2.6709 },
-  { uf: 'DF', startZip: '70000001', endZip: '72799999', days: 4,
-    weightPrices: [ { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 }, { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 }, { maxWeight: 100, price: 224.40 } ], perKgOver100: 2.6709 },
-  { uf: 'GO', startZip: '72800001', endZip: '76759999', days: 3,
-    weightPrices: [ { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 }, { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 }, { maxWeight: 100, price: 224.40 } ], perKgOver100: 2.6709 },
-  { uf: 'MS', startZip: '79000001', endZip: '79999999', days: 3,
-    weightPrices: [ { maxWeight: 10, price: 130.76 }, { maxWeight: 20, price: 132.47 }, { maxWeight: 40, price: 156.30 }, { maxWeight: 60, price: 190.36 }, { maxWeight: 100, price: 224.40 } ], perKgOver100: 2.6709 },
-  { uf: 'MT', startZip: '78000001', endZip: '78899999', days: 4,
-    weightPrices: [ { maxWeight: 10, price: 147.79 }, { maxWeight: 20, price: 156.30 }, { maxWeight: 40, price: 190.36 }, { maxWeight: 60, price: 275.49 }, { maxWeight: 100, price: 284.00 } ], perKgOver100: 3.5737 },
-  { uf: 'TO', startZip: '77000000', endZip: '77999999', days: 6,
-    weightPrices: [ { maxWeight: 10, price: 147.79 }, { maxWeight: 20, price: 156.30 }, { maxWeight: 40, price: 190.36 }, { maxWeight: 60, price: 275.49 }, { maxWeight: 100, price: 284.00 } ], perKgOver100: 3.5737 },
-  { uf: 'RO', startZip: '76800001', endZip: '76999999', days: 8,
-    weightPrices: [ { maxWeight: 10, price: 164.82 }, { maxWeight: 20, price: 181.85 }, { maxWeight: 40, price: 224.40 }, { maxWeight: 60, price: 309.55 }, { maxWeight: 100, price: 343.59 } ], perKgOver100: 3.9123 },
-  { uf: 'PA', startZip: '66000001', endZip: '68899999', days: 9,
-    weightPrices: [ { maxWeight: 10, price: 164.82 }, { maxWeight: 20, price: 181.85 }, { maxWeight: 40, price: 224.40 }, { maxWeight: 60, price: 309.55 }, { maxWeight: 100, price: 343.59 } ], perKgOver100: 3.9123 },
-  { uf: 'AP', startZip: '68900001', endZip: '68999999', days: 13,
-    weightPrices: [ { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 }, { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 }, { maxWeight: 100, price: 377.65 } ], perKgOver100: 4.2509 },
-  { uf: 'AC', startZip: '69900001', endZip: '69999999', days: 11,
-    weightPrices: [ { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 }, { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 }, { maxWeight: 100, price: 377.65 } ], perKgOver100: 4.2509 },
-  { uf: 'RR', startZip: '69300001', endZip: '69399999', days: 22,
-    weightPrices: [ { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 }, { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 }, { maxWeight: 100, price: 377.65 } ], perKgOver100: 4.2509 },
-  { uf: 'AM', startZip: '69000001', endZip: '69899999', days: 11,
-    weightPrices: [ { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 }, { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 }, { maxWeight: 100, price: 377.65 } ], perKgOver100: 4.2509 },
+// SP estado inteiro (01xxx a 19xxx). O que nao for gratis aqui = R$ 30.
+export const SP_ESTADO = { startZip: '01000000', endZip: '19999999', days: 2 };
+
+// Estados com frete fixo R$ 50 = Sudeste (fora SP) + Sul, que a Rodonaves atende
+// de perto. Centro-Oeste, Norte e Nordeste NAO entram: frete sob consulta no
+// WhatsApp (custo real alto demais para um fixo baixo). Faixas em ...0000.
+export const ESTADOS_R50 = [
+  { uf: 'MG', startZip: '30000000', endZip: '39999999', days: 2 },
+  { uf: 'RJ', startZip: '20000000', endZip: '28999999', days: 4 },
+  { uf: 'ES', startZip: '29000000', endZip: '29999999', days: 5 },
+  { uf: 'PR', startZip: '80000000', endZip: '87999999', days: 2 },
+  { uf: 'SC', startZip: '88000000', endZip: '89999999', days: 3 },
+  { uf: 'RS', startZip: '90000000', endZip: '99999999', days: 3 },
 ];
 
 // =========================================================
@@ -85,16 +68,11 @@ export function isZipInRange(zip, startZip, endZip) {
   return v >= zipToNumber(startZip) && v <= zipToNumber(endZip);
 }
 
-export function isGrandeSpGratis(zip) {
-  if (!GRANDE_SP.gratis || !isZipInRange(zip, GRANDE_SP.startZip, GRANDE_SP.endZip)) {
-    return false;
-  }
-  return !ALTO_TIETE_EXCLUSOES.some((range) =>
-    isZipInRange(zip, range.startZip, range.endZip)
-  );
+export function isGratis(zip) {
+  return ZONAS_GRATIS.some((z) => isZipInRange(zip, z.startZip, z.endZip));
 }
 
-// Peso taxado de UMA unidade = max(peso real, peso cubado @200)
+// Peso taxado de UMA unidade = max(peso real, peso cubado @300).
 export function chargeableWeight({ weight = 0, height = 0, width = 0, length = 0 }) {
   const real = Number(weight) || 0;
   const cubed = ((Number(height) || 0) * (Number(width) || 0) * (Number(length) || 0) / 1_000_000) * CUBAGE_FACTOR_KG_M3;
@@ -109,51 +87,34 @@ export function skuData(sku) {
   return { weight: d.p, height: d.a, width: d.l, length: d.c };
 }
 
-export function priceForWeight(rule, w) {
-  const b = rule.weightPrices.find((i) => w <= i.maxWeight);
-  if (b) return b.price;
-  if (rule.perKgOver100) return rule.perKgOver100 * w;
-  return null;
-}
-
-export function ruleForZip(zip) {
-  return FALLBACK_RULES.find((r) => isZipInRange(zip, r.startZip, r.endZip)) || null;
-}
-
-// Ultimo recurso, identico ao do checkout: garante que a Rodonaves nunca
-// "suma" da tela. ATENCAO: hoje ele cota QUALQUER CEP do Brasil, inclusive
-// regioes que a Rodonaves nao atende saindo de SP (Nordeste). Esta aqui
-// somente para a calculadora nao contradizer o checkout.
-export const EMERGENCY_FALLBACK = {
-  uf: null, days: 15,
-  weightPrices: [ { maxWeight: 10, price: 173.33 }, { maxWeight: 20, price: 190.36 }, { maxWeight: 40, price: 241.43 }, { maxWeight: 60, price: 326.56 }, { maxWeight: 100, price: 377.65 } ],
-  perKgOver100: 4.2509,
-};
-
 // Resultado do frete para um CEP + peso taxado.
-// Espelha exatamente o api/shipping/rodonaves.js (v6): Grande SP gratis,
-// tabela regional, e emergency fallback no que sobrar.
+// Espelha exatamente o api/shipping/rodonaves.js.
 export function cotar(zip, chargeable) {
   const cep = onlyDigits(zip);
   if (!cep || cep.length !== 8) return { atende: false, motivo: 'cep_invalido' };
   if (!chargeable || chargeable <= 0) return { atende: false, motivo: 'peso_invalido' };
 
-  if (isGrandeSpGratis(cep)) {
-    return { atende: true, gratis: true, price: 0, days: GRANDE_SP.days + DELIVERY_DAYS_BUFFER, uf: 'SP' };
+  // 1) Zona gratis (vale ate para itens grandes — entrega propria/local da loja).
+  if (isGratis(cep)) {
+    return { atende: true, gratis: true, price: 0, days: GRATIS_DAYS + DELIVERY_DAYS_BUFFER, zona: 'gratis' };
   }
 
-  const rule = ruleForZip(cep);
-  const usada = rule || EMERGENCY_FALLBACK;
+  // 2) Item grande/pesado demais para o frete fixo -> WhatsApp.
+  if (chargeable > TETO_PESO_KG) {
+    return { atende: false, motivo: 'consultar_whatsapp' };
+  }
 
-  const base = priceForWeight(usada, chargeable);
-  if (base == null) return { atende: false, motivo: 'sem_faixa' };
+  // 3) Resto de SP (interior + Alto Tiete/Mogi) = R$ 30.
+  if (isZipInRange(cep, SP_ESTADO.startZip, SP_ESTADO.endZip)) {
+    return { atende: true, gratis: false, price: FRETE_SP, days: SP_ESTADO.days + DELIVERY_DAYS_BUFFER, zona: 'sp', uf: 'SP' };
+  }
 
-  return {
-    atende: true,
-    gratis: false,
-    price: Number((base * FALLBACK_PRICE_MULTIPLIER).toFixed(2)),
-    days: usada.days + DELIVERY_DAYS_BUFFER,
-    uf: usada.uf,
-    emergencia: !rule,
-  };
+  // 4) Sudeste (fora SP) + Sul = R$ 50.
+  const est = ESTADOS_R50.find((e) => isZipInRange(cep, e.startZip, e.endZip));
+  if (est) {
+    return { atende: true, gratis: false, price: FRETE_OUTROS, days: est.days + DELIVERY_DAYS_BUFFER, zona: 'br', uf: est.uf };
+  }
+
+  // 5) Centro-Oeste, Norte e Nordeste = frete sob consulta no WhatsApp.
+  return { atende: false, motivo: 'regiao_cotar' };
 }

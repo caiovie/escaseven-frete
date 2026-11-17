@@ -9,18 +9,24 @@ Rodando em: `https://escaseven-frete.vercel.app` (região `gru1`, São Paulo).
 
 ## A regra de negócio, em uma frase
 
-**Capital e Grande São Paulo (CEP 01000-000 a 09999-999) têm frete grátis, com
-exceção das 10 cidades do Alto Tietê. O resto do Brasil é cotado pela tabela da
-Rodonaves.**
+**Frete fixo por região (nov/2026):** Grande SP (Capital + Osasco + Guarulhos +
+ABC) é **grátis**; **Alto Tietê e Mogi das Cruzes cobram**. Resto de SP = **R$ 30**.
+Demais estados atendidos pela Rodonaves = **R$ 50**. Item grande demais (peso taxado
+acima do teto) ou região não atendida = **"fale no WhatsApp"**.
 
-As exceções cobradas são: Arujá, Santa Isabel, Ferraz de Vasconcelos, Poá,
-Itaquaquecetuba, Suzano, Mogi das Cruzes, Guararema, Biritiba Mirim e Salesópolis.
-Guarulhos permanece grátis nesta versão.
+- **Grátis** (CEPs): SP Capital `01000-05999` e `08000-08499`; Osasco e região `06xxx`;
+  Guarulhos e região `07000-07399`; ABC Paulista `09xxx`.
+- **R$ 30**: qualquer outro CEP de SP (`01000-000`–`19999-999`) — inclui interior,
+  Alto Tietê (`07400-07999`, `08500-08999`) e Mogi das Cruzes.
+- **R$ 50**: Sudeste (fora SP) + Sul — MG, RJ, ES, PR, SC, RS.
+- **WhatsApp (frete sob consulta)**: peso taxado (cubado@300) acima de
+  **`TETO_PESO_KG`** (hoje 80 kg) — plataformas/escadas gigantes —, **ou**
+  Centro-Oeste, Norte e Nordeste (custo real alto demais para um fixo baixo).
 
-Decisão do Betão em 16/07/2026. Interior de SP (11xxx em diante) **cobra normal** —
-uma entrega em Ribeirão Preto custa ~R$ 167 reais pra loja, não dá pra absorver.
-
-Para desligar o frete grátis: `GRANDE_SP.gratis = false` (nos dois arquivos).
+Os valores, o teto e as faixas ficam no topo do `_engine.js`/`rodonaves.js` (constantes
+`FRETE_SP`, `FRETE_OUTROS`, `TETO_PESO_KG`, `ZONAS_GRATIS`, `ESTADOS_R50`). Para dar
+R$ 50 a mais um estado, é só adicioná-lo em `ESTADOS_R50`.
+Trocar é mudar o número **nos dois arquivos** (o teste de consistência garante que batem).
 
 ---
 
@@ -80,19 +86,22 @@ dá cubado 35,496 kg. O log de produção da Yampi mostrou exatamente `PESO TAXA
 
 ## Como o frete é calculado
 
-1. **Peso taxado** = maior valor entre o peso real e o peso cubado.
-   Cubado = (altura × largura × comprimento em m³) × **200 kg/m³**
-   (fator do contrato RM Escadas / Rodonaves).
+1. **CEP na zona grátis** (SP Capital / Osasco / Guarulhos / ABC)? → **grátis**,
+   acabou — vale até para itens grandes (entrega própria/local).
 
-2. **Grande SP fora do Alto Tietê?** → grátis, acabou.
+2. **Peso taxado** = maior valor entre o peso real e o cubado
+   (cubado = altura × largura × comprimento em m³ × **300 kg/m³**, fator do contrato).
+   Acima de `TETO_PESO_KG` (80 kg) → **"fale no WhatsApp"** (plataforma/escada gigante).
 
-3. **Senão** → acha a faixa de CEP na `FALLBACK_RULES`, pega o preço da faixa de
-   peso e multiplica por **2,0**.
+3. **CEP de SP** (não grátis)? → **R$ 30**.
 
-O multiplicador existe porque a tabela da Rodonaves é só o "frete-peso". O que ela
-cobra de verdade inclui ICMS, GRIS, Ad Valorem, pedágio e SECCAT. Conferindo boletos
-reais (CT-e), o total fica entre 2,5x e 2,7x o frete-peso. Usamos 2,0x, que é
-conservador.
+4. **Sudeste (fora SP) ou Sul** (MG, RJ, ES, PR, SC, RS)? → **R$ 50**.
+
+5. **Senão** (Centro-Oeste, Norte, Nordeste) → **"fale no WhatsApp"** (sob consulta).
+
+> Modelo anterior (tabela RM Escadas por faixa de peso × distância, com multiplicador
+> 2,0x) foi substituído por este frete fixo por região em nov/2026. O cálculo por
+> tabela/cubagem continua sendo feito pós-pedido no n8n; aqui é só a vitrine de preço.
 
 ---
 
@@ -111,9 +120,11 @@ Rode sempre que mexer em `_engine.js` ou `rodonaves.js`.
 Teste rápido das rotas, depois do deploy:
 
 ```
-/api/shipping/rodonaves                                  → deve dizer "v6"
-/api/shipping/calculadora?cep=01310100&sku=8US5V7PPR     → gratis: true
-/api/shipping/calculadora?cep=14026574&sku=8US5V7PPR     → price: 176.38
+/api/shipping/rodonaves                                  → deve dizer "v7"
+/api/shipping/calculadora?cep=01310100&sku=8US5V7PPR     → gratis: true  (SP Capital)
+/api/shipping/calculadora?cep=14026574&sku=8US5V7PPR     → price: 30     (interior SP)
+/api/shipping/calculadora?cep=30140071&sku=8US5V7PPR     → price: 50     (MG)
+/api/shipping/calculadora?cep=13015000&sku=PLAT300L      → atende:false, motivo: consultar_whatsapp
 ```
 
 ---
@@ -129,25 +140,25 @@ logo abaixo de "Botões de compra".
 ⚠️ **O site está no ar e vendendo.** Mexa sempre numa cópia do tema, teste no
 preview (computador e celular), e só depois publique.
 
-Ao testar a calculadora, use **dois** CEPs: um de SP (01310-100 → grátis) e um de
-fora (14026-574 → R$ 176,38). Se testar só com CEP de SP, tudo dá grátis e você não
-valida o cálculo.
+Ao testar a calculadora, use CEPs de **três zonas**: Grande SP (01310-100 → grátis),
+interior de SP (14026-574 → R$ 30) e outro estado (30140-071 → R$ 50). Teste também um
+item grande (ex.: `PLAT300L`) num CEP pago → deve cair em "fale no WhatsApp".
 
 ---
 
 ## Dívidas conhecidas
 
-**1. O emergency fallback cota o Brasil inteiro.**
-Quando o CEP não casa com nenhuma faixa, cai no `EMERGENCY_FALLBACK`, que cota
-qualquer lugar. Só que a Rodonaves **não atende o Nordeste saindo de SP**.
-Um log real mostrou o site cotando R$ 482,86 em 18 dias para Recife (CEP 50810000) —
-uma entrega que não sai. O certo seria responder "não entregamos nesse CEP".
+**1. (Resolvido) Nordeste não mostra mais preço impossível.**
+No modelo flat, CEP fora da lista de estados atendidos responde
+`regiao_nao_atendida` → "fale no WhatsApp", em vez de cotar uma entrega que não sai.
 
-**2. As faixas de CEP começam em `...0001`.**
-`20000001` (RJ), `30000001` (MG), `69900001` (AC). O primeiro CEP de cada faixa
-escapa e cai na emergência. Rio Branco (69900-000) é um caso real.
-Corrigir para `...0000` — mas nos **dois** arquivos ao mesmo tempo, senão o teste
-de consistência quebra.
+**2. (Resolvido) Faixas de CEP agora começam em `...0000`.**
+Rio Branco (69900-000) e os primeiros CEPs de cada estado deixaram de escapar.
+
+**2b. (Resolvido) Estados distantes não têm mais fixo baixo.**
+Centro-Oeste, Norte e Nordeste vão para o WhatsApp (frete sob consulta), porque o
+custo real é alto demais para um fixo de R$ 50 mesmo em item leve. Só Sudeste+Sul
+têm o fixo. Para dar fixo a mais um estado, inclua-o em `ESTADOS_R50`.
 
 **3. Tabela duplicada.**
 `rodonaves.js` tem a própria cópia das tabelas em vez de importar do `_engine.js`.
