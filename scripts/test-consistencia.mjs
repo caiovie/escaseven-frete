@@ -74,3 +74,27 @@ for (const caso of regraFrete) {
   assert.equal(resultado.gratis, caso.gratis, `${caso.nome} (${caso.cep})`);
 }
 console.log('REGRA ALTO TIETE: excecoes cobradas e demais casos esperados confirmados.');
+
+// Modelo flat: valores fixos por regiao (8US5V7PPR ~53kg, abaixo do teto de 80).
+const flatCasos = [
+  { cep: '01310100', atende: true,  gratis: true,  price: 0,  nome: 'SP Capital gratis' },
+  { cep: '06233030', atende: true,  gratis: true,  price: 0,  nome: 'Osasco gratis' },
+  { cep: '09560000', atende: true,  gratis: true,  price: 0,  nome: 'ABC (Sao Caetano) gratis' },
+  { cep: '08740060', atende: true,  gratis: false, price: 30, nome: 'Mogi das Cruzes R$30' },
+  { cep: '13140605', atende: true,  gratis: false, price: 30, nome: 'Interior SP R$30' },
+  { cep: '30140071', atende: true,  gratis: false, price: 50, nome: 'MG R$50' },
+  { cep: '90010150', atende: true,  gratis: false, price: 50, nome: 'RS R$50' },
+];
+for (const caso of flatCasos) {
+  const r = cotar(caso.cep, testePesoTaxado);
+  assert.equal(r.atende, caso.atende, `${caso.nome} atende`);
+  assert.equal(r.gratis || false, caso.gratis, `${caso.nome} gratis`);
+  assert.equal(r.atende ? r.price : null, caso.atende ? caso.price : null, `${caso.nome} price`);
+}
+
+// Teto de peso: item grande fora da zona gratis -> WhatsApp; dentro da gratis -> gratis.
+const pesado = chargeableWeight(skuData('PLAT300L')); // ~295 kg taxado, acima do teto
+assert.equal(cotar('13140605', pesado).motivo, 'consultar_whatsapp', 'Item grande interior SP -> WhatsApp');
+assert.equal(cotar('30140071', pesado).motivo, 'consultar_whatsapp', 'Item grande MG -> WhatsApp');
+assert.equal(cotar('01310100', pesado).gratis, true, 'Item grande SP Capital -> gratis (entrega propria)');
+console.log('MODELO FLAT: valores fixos por regiao (30/50), zona gratis e teto de peso confirmados.');

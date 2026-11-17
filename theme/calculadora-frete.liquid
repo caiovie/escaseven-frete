@@ -198,6 +198,9 @@
           return erro('Não consegui calcular agora. Confira o CEP e tente de novo.');
         }
         if (!d.atende) {
+          if (d.motivo === 'consultar_whatsapp') {
+            return erro('Esse produto é grande e o frete é calculado sob medida. Fale com a gente pelo WhatsApp que calculamos pra você.');
+          }
           return erro('Não entregamos nesse CEP no momento. Fale com a gente pelo WhatsApp.');
         }
 
@@ -205,7 +208,7 @@
         if (d.gratis) {
           mostrar(
             '<div class="es-frete__linha es-frete__linha--gratis">' +
-              '<span class="es-frete__nome">Rodonaves' +
+              '<span class="es-frete__nome">Frete Escaseven' +
                 '<span class="es-frete__prazo">Chega em até ' + prazo + '</span>' +
               '</span>' +
               '<span class="es-frete__valor es-frete__valor--gratis">Frete grátis</span>' +
@@ -214,7 +217,7 @@
         } else {
           mostrar(
             '<div class="es-frete__linha">' +
-              '<span class="es-frete__nome">Rodonaves' +
+              '<span class="es-frete__nome">Frete Escaseven' +
                 '<span class="es-frete__prazo">Chega em até ' + prazo + '</span>' +
               '</span>' +
               '<span class="es-frete__valor">' + moeda(d.price) + '</span>' +
