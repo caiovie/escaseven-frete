@@ -244,6 +244,7 @@ export default {
   "TAFESCESC20D": { p: 32.5, a: 18.0, l: 88.0, c: 556.0 },
   "TAFESCESC2DE": { p: 4.5, a: 18.0, l: 38.0, c: 52.0 },
   "TAFESCESC3DE": { p: 5.7, a: 18.0, l: 40.0, c: 80.0 },
+  "TAFD5": { p: 7.0, a: 15.0, l: 44.0, c: 150.0 },
   "TAFESCESC6DE": { p: 9.7, a: 18.0, l: 49.0, c: 164.0 },
   "TAFESCESC7DE": { p: 11.0, a: 18.0, l: 52.0, c: 192.0 },
   "TAFESCESC8DE": { p: 12.7, a: 18.0, l: 54.0, c: 220.0 },
